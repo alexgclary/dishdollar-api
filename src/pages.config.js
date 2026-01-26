@@ -1,0 +1,31 @@
+import AddRecipe from './pages/AddRecipe';
+import Budget from './pages/Budget';
+import Home from './pages/Home';
+import MealPlanner from './pages/MealPlanner';
+import Onboarding from './pages/Onboarding';
+import Profile from './pages/Profile';
+import RecipeDetails from './pages/RecipeDetails';
+import SavedRecipes from './pages/SavedRecipes';
+import ShoppingList from './pages/ShoppingList';
+import Welcome from './pages/Welcome';
+import __Layout from './Layout.jsx';
+
+
+export const PAGES = {
+    "AddRecipe": AddRecipe,
+    "Budget": Budget,
+    "Home": Home,
+    "MealPlanner": MealPlanner,
+    "Onboarding": Onboarding,
+    "Profile": Profile,
+    "RecipeDetails": RecipeDetails,
+    "SavedRecipes": SavedRecipes,
+    "ShoppingList": ShoppingList,
+    "Welcome": Welcome,
+}
+
+export const pagesConfig = {
+    mainPage: "Onboarding",
+    Pages: PAGES,
+    Layout: __Layout,
+};
