@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Sparkles, ChefHat, TrendingUp, BookOpen, Calendar, Compass, Filter, X } from 'lucide-react';
+import { Plus, Search, Sparkles, ChefHat, TrendingUp, BookOpen, Calendar, Compass, Filter, X, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -124,6 +124,369 @@ const sampleRecipes = [
       { name: "Ginger", amount: 1, unit: "inch", estimated_price: 1.00 }
     ],
     instructions: ["Mix teriyaki sauce ingredients", "Pan sear salmon", "Glaze with sauce while cooking", "Serve with steamed rice"]
+  },
+  {
+    title: "Greek Chicken Souvlaki",
+    description: "Grilled marinated chicken skewers with tzatziki sauce",
+    image_url: "https://images.unsplash.com/photo-1529006557810-274b9b2fc783?w=800",
+    cuisines: ["Greek", "Mediterranean"],
+    diets: ["Gluten-Free"],
+    prep_time: 20,
+    cook_time: 15,
+    servings: 4,
+    total_cost: 13.00,
+    ingredients: [
+      { name: "Chicken breast", amount: 1.5, unit: "lb", estimated_price: 7.00 },
+      { name: "Greek yogurt", amount: 1, unit: "cup", estimated_price: 2.00 },
+      { name: "Cucumber", amount: 1, unit: "medium", estimated_price: 1.00 },
+      { name: "Lemon", amount: 2, unit: "whole", estimated_price: 1.00 },
+      { name: "Fresh oregano", amount: 2, unit: "tbsp", estimated_price: 2.00 }
+    ],
+    instructions: ["Marinate chicken in lemon, olive oil, and oregano", "Thread onto skewers", "Grill until cooked through", "Make tzatziki with yogurt and cucumber"]
+  },
+  {
+    title: "Korean Bibimbap",
+    description: "Colorful rice bowl with vegetables, beef, and gochujang",
+    image_url: "https://images.unsplash.com/photo-1553163147-622ab57be1c7?w=800",
+    cuisines: ["Korean"],
+    diets: ["Dairy-Free"],
+    prep_time: 30,
+    cook_time: 20,
+    servings: 4,
+    total_cost: 14.00,
+    ingredients: [
+      { name: "Short grain rice", amount: 2, unit: "cups", estimated_price: 2.00 },
+      { name: "Ground beef", amount: 0.5, unit: "lb", estimated_price: 4.00 },
+      { name: "Spinach", amount: 4, unit: "cups", estimated_price: 2.50 },
+      { name: "Carrots", amount: 2, unit: "medium", estimated_price: 1.00 },
+      { name: "Gochujang", amount: 3, unit: "tbsp", estimated_price: 2.50 },
+      { name: "Eggs", amount: 4, unit: "large", estimated_price: 2.00 }
+    ],
+    instructions: ["Cook rice and keep warm", "Prepare each vegetable separately", "Cook seasoned beef", "Assemble bowls and top with fried egg"]
+  },
+  {
+    title: "Vietnamese Pho",
+    description: "Aromatic beef noodle soup with fresh herbs",
+    image_url: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=800",
+    cuisines: ["Vietnamese"],
+    diets: ["Dairy-Free"],
+    prep_time: 20,
+    cook_time: 60,
+    servings: 4,
+    total_cost: 15.00,
+    ingredients: [
+      { name: "Rice noodles", amount: 8, unit: "oz", estimated_price: 3.00 },
+      { name: "Beef broth", amount: 8, unit: "cups", estimated_price: 4.00 },
+      { name: "Sirloin steak", amount: 0.5, unit: "lb", estimated_price: 5.00 },
+      { name: "Bean sprouts", amount: 2, unit: "cups", estimated_price: 1.50 },
+      { name: "Fresh basil", amount: 1, unit: "bunch", estimated_price: 1.50 }
+    ],
+    instructions: ["Simmer broth with star anise and cinnamon", "Cook rice noodles", "Slice beef paper thin", "Assemble and pour hot broth over"]
+  },
+  {
+    title: "Classic American Burger",
+    description: "Juicy beef burger with all the fixings",
+    image_url: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800",
+    cuisines: ["American"],
+    diets: [],
+    prep_time: 15,
+    cook_time: 10,
+    servings: 4,
+    total_cost: 12.00,
+    ingredients: [
+      { name: "Ground beef 80/20", amount: 1.5, unit: "lb", estimated_price: 6.00 },
+      { name: "Brioche buns", amount: 4, unit: "whole", estimated_price: 3.00 },
+      { name: "Cheddar cheese", amount: 4, unit: "slices", estimated_price: 2.00 },
+      { name: "Lettuce", amount: 4, unit: "leaves", estimated_price: 0.50 },
+      { name: "Tomato", amount: 1, unit: "large", estimated_price: 0.50 }
+    ],
+    instructions: ["Form patties and season generously", "Grill to desired doneness", "Toast buns on grill", "Assemble with toppings"]
+  },
+  {
+    title: "French Ratatouille",
+    description: "Classic Provençal vegetable stew",
+    image_url: "https://images.unsplash.com/photo-1572453800999-e8d2d1589b7c?w=800",
+    cuisines: ["French"],
+    diets: ["Vegan", "Vegetarian", "Gluten-Free"],
+    prep_time: 30,
+    cook_time: 45,
+    servings: 6,
+    total_cost: 10.00,
+    ingredients: [
+      { name: "Eggplant", amount: 1, unit: "large", estimated_price: 2.00 },
+      { name: "Zucchini", amount: 2, unit: "medium", estimated_price: 2.00 },
+      { name: "Bell peppers", amount: 2, unit: "medium", estimated_price: 2.50 },
+      { name: "Tomatoes", amount: 4, unit: "medium", estimated_price: 2.50 },
+      { name: "Fresh thyme", amount: 4, unit: "sprigs", estimated_price: 1.00 }
+    ],
+    instructions: ["Slice all vegetables uniformly", "Layer in baking dish", "Drizzle with olive oil and herbs", "Bake until tender"]
+  },
+  {
+    title: "Spanish Paella",
+    description: "Saffron-infused rice with seafood and chorizo",
+    image_url: "https://images.unsplash.com/photo-1534080564583-6be75777b70a?w=800",
+    cuisines: ["Spanish"],
+    diets: ["Gluten-Free"],
+    prep_time: 25,
+    cook_time: 35,
+    servings: 6,
+    total_cost: 25.00,
+    ingredients: [
+      { name: "Bomba rice", amount: 2, unit: "cups", estimated_price: 5.00 },
+      { name: "Shrimp", amount: 1, unit: "lb", estimated_price: 10.00 },
+      { name: "Chorizo", amount: 6, unit: "oz", estimated_price: 4.00 },
+      { name: "Saffron threads", amount: 1, unit: "pinch", estimated_price: 3.00 },
+      { name: "Chicken broth", amount: 4, unit: "cups", estimated_price: 3.00 }
+    ],
+    instructions: ["Toast rice in pan with olive oil", "Add saffron-infused broth", "Arrange proteins on top", "Cook until socarrat forms"]
+  },
+  {
+    title: "Middle Eastern Falafel",
+    description: "Crispy chickpea fritters with tahini sauce",
+    image_url: "https://images.unsplash.com/photo-1593001874117-c99c800e3eb7?w=800",
+    cuisines: ["Middle Eastern"],
+    diets: ["Vegan", "Vegetarian"],
+    prep_time: 20,
+    cook_time: 15,
+    servings: 4,
+    total_cost: 8.00,
+    ingredients: [
+      { name: "Dried chickpeas", amount: 1, unit: "lb", estimated_price: 2.00 },
+      { name: "Fresh parsley", amount: 1, unit: "bunch", estimated_price: 1.50 },
+      { name: "Cumin", amount: 2, unit: "tsp", estimated_price: 0.50 },
+      { name: "Pita bread", amount: 4, unit: "rounds", estimated_price: 2.50 },
+      { name: "Tahini", amount: 0.5, unit: "cup", estimated_price: 1.50 }
+    ],
+    instructions: ["Soak chickpeas overnight", "Blend with herbs and spices", "Form into patties", "Fry until golden brown"]
+  },
+  {
+    title: "Chinese Kung Pao Chicken",
+    description: "Spicy stir-fried chicken with peanuts",
+    image_url: "https://images.unsplash.com/photo-1525755662778-989d0524087e?w=800",
+    cuisines: ["Chinese"],
+    diets: ["Dairy-Free"],
+    prep_time: 20,
+    cook_time: 15,
+    servings: 4,
+    total_cost: 12.00,
+    ingredients: [
+      { name: "Chicken breast", amount: 1, unit: "lb", estimated_price: 5.00 },
+      { name: "Roasted peanuts", amount: 0.5, unit: "cup", estimated_price: 2.00 },
+      { name: "Dried red chilies", amount: 10, unit: "whole", estimated_price: 1.00 },
+      { name: "Soy sauce", amount: 3, unit: "tbsp", estimated_price: 1.00 },
+      { name: "Green onions", amount: 4, unit: "stalks", estimated_price: 1.00 },
+      { name: "Rice vinegar", amount: 2, unit: "tbsp", estimated_price: 2.00 }
+    ],
+    instructions: ["Cube and marinate chicken", "Stir-fry chilies in wok", "Add chicken and cook through", "Toss with peanuts and sauce"]
+  },
+  {
+    title: "Caribbean Jerk Chicken",
+    description: "Spicy grilled chicken with island flavors",
+    image_url: "https://images.unsplash.com/photo-1532550907401-a500c9a57435?w=800",
+    cuisines: ["Caribbean"],
+    diets: ["Gluten-Free", "Dairy-Free"],
+    prep_time: 15,
+    cook_time: 30,
+    servings: 4,
+    total_cost: 11.00,
+    ingredients: [
+      { name: "Chicken thighs", amount: 2, unit: "lb", estimated_price: 6.00 },
+      { name: "Scotch bonnet pepper", amount: 2, unit: "whole", estimated_price: 1.00 },
+      { name: "Allspice", amount: 1, unit: "tbsp", estimated_price: 1.00 },
+      { name: "Fresh thyme", amount: 6, unit: "sprigs", estimated_price: 1.50 },
+      { name: "Green onions", amount: 4, unit: "stalks", estimated_price: 1.50 }
+    ],
+    instructions: ["Blend jerk marinade ingredients", "Marinate chicken 4-24 hours", "Grill over medium heat", "Serve with rice and peas"]
+  },
+  {
+    title: "Keto Cauliflower Fried Rice",
+    description: "Low-carb twist on a takeout classic",
+    image_url: "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=800",
+    cuisines: ["Chinese", "American"],
+    diets: ["Keto", "Low-Carb", "Gluten-Free"],
+    prep_time: 15,
+    cook_time: 15,
+    servings: 4,
+    total_cost: 10.00,
+    ingredients: [
+      { name: "Cauliflower", amount: 1, unit: "large head", estimated_price: 3.00 },
+      { name: "Eggs", amount: 3, unit: "large", estimated_price: 1.50 },
+      { name: "Sesame oil", amount: 2, unit: "tbsp", estimated_price: 1.50 },
+      { name: "Frozen peas and carrots", amount: 1, unit: "cup", estimated_price: 1.50 },
+      { name: "Coconut aminos", amount: 3, unit: "tbsp", estimated_price: 2.50 }
+    ],
+    instructions: ["Rice the cauliflower in food processor", "Scramble eggs and set aside", "Stir-fry vegetables and cauliflower", "Add eggs and coconut aminos"]
+  },
+  {
+    title: "Whole30 Sheet Pan Chicken",
+    description: "Simple one-pan compliant dinner",
+    image_url: "https://images.unsplash.com/photo-1598515214211-89d3c73ae83b?w=800",
+    cuisines: ["American"],
+    diets: ["Whole30", "Paleo", "Gluten-Free", "Dairy-Free"],
+    prep_time: 10,
+    cook_time: 35,
+    servings: 4,
+    total_cost: 14.00,
+    ingredients: [
+      { name: "Chicken thighs", amount: 2, unit: "lb", estimated_price: 6.00 },
+      { name: "Brussels sprouts", amount: 1, unit: "lb", estimated_price: 3.00 },
+      { name: "Sweet potatoes", amount: 2, unit: "medium", estimated_price: 2.00 },
+      { name: "Ghee", amount: 3, unit: "tbsp", estimated_price: 2.00 },
+      { name: "Fresh rosemary", amount: 3, unit: "sprigs", estimated_price: 1.00 }
+    ],
+    instructions: ["Preheat oven to 425°F", "Toss vegetables with ghee", "Season chicken and arrange on pan", "Roast until chicken reaches 165°F"]
+  },
+  {
+    title: "Vegetarian Pad Thai",
+    description: "Classic Thai noodles with tofu and peanuts",
+    image_url: "https://images.unsplash.com/photo-1559314809-0d155014e29e?w=800",
+    cuisines: ["Thai"],
+    diets: ["Vegetarian", "Vegan"],
+    prep_time: 20,
+    cook_time: 15,
+    servings: 4,
+    total_cost: 11.00,
+    ingredients: [
+      { name: "Rice noodles", amount: 8, unit: "oz", estimated_price: 2.50 },
+      { name: "Extra firm tofu", amount: 14, unit: "oz", estimated_price: 3.00 },
+      { name: "Bean sprouts", amount: 2, unit: "cups", estimated_price: 1.50 },
+      { name: "Peanuts", amount: 0.5, unit: "cup", estimated_price: 2.00 },
+      { name: "Tamarind paste", amount: 3, unit: "tbsp", estimated_price: 2.00 }
+    ],
+    instructions: ["Soak noodles in warm water", "Press and cube tofu", "Make tamarind sauce", "Stir-fry and toss together"]
+  },
+  {
+    title: "Italian Margherita Pizza",
+    description: "Classic Neapolitan pizza with fresh mozzarella and basil",
+    image_url: "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=800",
+    cuisines: ["Italian"],
+    diets: ["Vegetarian"],
+    prep_time: 30,
+    cook_time: 12,
+    servings: 4,
+    total_cost: 9.00,
+    ingredients: [
+      { name: "Pizza dough", amount: 1, unit: "lb", estimated_price: 2.50 },
+      { name: "San Marzano tomatoes", amount: 1, unit: "can", estimated_price: 2.50 },
+      { name: "Fresh mozzarella", amount: 8, unit: "oz", estimated_price: 3.00 },
+      { name: "Fresh basil", amount: 1, unit: "bunch", estimated_price: 1.00 }
+    ],
+    instructions: ["Stretch dough to 12-inch round", "Spread crushed tomatoes", "Top with torn mozzarella", "Bake at 500°F, add basil after"]
+  },
+  {
+    title: "Moroccan Lamb Tagine",
+    description: "Slow-cooked lamb with apricots and almonds",
+    image_url: "https://images.unsplash.com/photo-1511690743698-d9d85f2fbf38?w=800",
+    cuisines: ["Middle Eastern", "Mediterranean"],
+    diets: ["Gluten-Free", "Dairy-Free"],
+    prep_time: 25,
+    cook_time: 120,
+    servings: 6,
+    total_cost: 22.00,
+    ingredients: [
+      { name: "Lamb shoulder", amount: 2, unit: "lb", estimated_price: 14.00 },
+      { name: "Dried apricots", amount: 1, unit: "cup", estimated_price: 3.00 },
+      { name: "Slivered almonds", amount: 0.5, unit: "cup", estimated_price: 2.50 },
+      { name: "Ras el hanout", amount: 2, unit: "tbsp", estimated_price: 1.50 },
+      { name: "Chicken broth", amount: 2, unit: "cups", estimated_price: 1.00 }
+    ],
+    instructions: ["Brown lamb in batches", "Sauté onions with spices", "Add broth and apricots", "Simmer 2 hours until tender"]
+  },
+  {
+    title: "Shrimp Scampi",
+    description: "Garlic butter shrimp over linguine",
+    image_url: "https://images.unsplash.com/photo-1633504581786-316c8002b1b9?w=800",
+    cuisines: ["Italian", "American"],
+    diets: ["Pescatarian"],
+    prep_time: 10,
+    cook_time: 15,
+    servings: 4,
+    total_cost: 18.00,
+    ingredients: [
+      { name: "Large shrimp", amount: 1.5, unit: "lb", estimated_price: 12.00 },
+      { name: "Linguine", amount: 1, unit: "lb", estimated_price: 2.00 },
+      { name: "Butter", amount: 4, unit: "tbsp", estimated_price: 1.50 },
+      { name: "Garlic", amount: 6, unit: "cloves", estimated_price: 0.50 },
+      { name: "White wine", amount: 0.5, unit: "cup", estimated_price: 2.00 }
+    ],
+    instructions: ["Cook pasta al dente", "Sauté garlic in butter", "Add shrimp and wine", "Toss with pasta and parsley"]
+  },
+  {
+    title: "Brazilian Feijoada",
+    description: "Hearty black bean and pork stew",
+    image_url: "https://images.unsplash.com/photo-1547496502-affa22d38842?w=800",
+    cuisines: ["Brazilian"],
+    diets: ["Gluten-Free", "Dairy-Free"],
+    prep_time: 30,
+    cook_time: 180,
+    servings: 8,
+    total_cost: 20.00,
+    ingredients: [
+      { name: "Black beans", amount: 1, unit: "lb", estimated_price: 2.00 },
+      { name: "Pork shoulder", amount: 1, unit: "lb", estimated_price: 5.00 },
+      { name: "Smoked sausage", amount: 1, unit: "lb", estimated_price: 5.00 },
+      { name: "Bacon", amount: 8, unit: "oz", estimated_price: 4.00 },
+      { name: "Bay leaves", amount: 4, unit: "whole", estimated_price: 0.50 },
+      { name: "Orange", amount: 1, unit: "whole", estimated_price: 0.50 }
+    ],
+    instructions: ["Soak beans overnight", "Brown all meats", "Simmer with beans and aromatics", "Serve with rice and orange slices"]
+  },
+  {
+    title: "Caprese Salad",
+    description: "Simple Italian salad with tomatoes and fresh mozzarella",
+    image_url: "https://images.unsplash.com/photo-1608897013039-887f21d8c804?w=800",
+    cuisines: ["Italian"],
+    diets: ["Vegetarian", "Gluten-Free", "Keto", "Low-Carb"],
+    prep_time: 10,
+    cook_time: 0,
+    servings: 4,
+    total_cost: 10.00,
+    ingredients: [
+      { name: "Heirloom tomatoes", amount: 3, unit: "large", estimated_price: 4.00 },
+      { name: "Fresh mozzarella", amount: 8, unit: "oz", estimated_price: 4.00 },
+      { name: "Fresh basil", amount: 1, unit: "bunch", estimated_price: 1.50 },
+      { name: "Balsamic glaze", amount: 2, unit: "tbsp", estimated_price: 0.50 }
+    ],
+    instructions: ["Slice tomatoes and mozzarella", "Arrange alternating on plate", "Tuck basil leaves between", "Drizzle with olive oil and balsamic"]
+  },
+  {
+    title: "Ethiopian Doro Wat",
+    description: "Spiced chicken stew with berbere and hard-boiled eggs",
+    image_url: "https://images.unsplash.com/photo-1604329760661-e71dc83f8f26?w=800",
+    cuisines: ["Ethiopian"],
+    diets: ["Gluten-Free", "Dairy-Free"],
+    prep_time: 30,
+    cook_time: 90,
+    servings: 6,
+    total_cost: 16.00,
+    ingredients: [
+      { name: "Chicken legs", amount: 3, unit: "lb", estimated_price: 7.00 },
+      { name: "Berbere spice", amount: 3, unit: "tbsp", estimated_price: 3.00 },
+      { name: "Red onions", amount: 4, unit: "large", estimated_price: 2.00 },
+      { name: "Eggs", amount: 6, unit: "large", estimated_price: 2.00 },
+      { name: "Niter kibbeh", amount: 4, unit: "tbsp", estimated_price: 2.00 }
+    ],
+    instructions: ["Caramelize onions slowly", "Add berbere and tomato paste", "Braise chicken until tender", "Add hard-boiled eggs before serving"]
+  },
+  {
+    title: "German Schnitzel",
+    description: "Crispy breaded pork cutlets",
+    image_url: "https://images.unsplash.com/photo-1599921841143-819065a55cc6?w=800",
+    cuisines: ["German"],
+    diets: ["Dairy-Free"],
+    prep_time: 20,
+    cook_time: 10,
+    servings: 4,
+    total_cost: 14.00,
+    ingredients: [
+      { name: "Pork loin cutlets", amount: 1.5, unit: "lb", estimated_price: 7.00 },
+      { name: "Breadcrumbs", amount: 2, unit: "cups", estimated_price: 2.00 },
+      { name: "Eggs", amount: 2, unit: "large", estimated_price: 1.00 },
+      { name: "Flour", amount: 1, unit: "cup", estimated_price: 0.50 },
+      { name: "Lemon", amount: 2, unit: "whole", estimated_price: 1.00 },
+      { name: "Vegetable oil", amount: 1, unit: "cup", estimated_price: 2.50 }
+    ],
+    instructions: ["Pound cutlets thin", "Dredge in flour, egg, breadcrumbs", "Fry in shallow oil until golden", "Serve with lemon wedges"]
   }
 ];
 
@@ -146,7 +509,12 @@ export default function Home() {
   });
 
   // Fetch recipes
-  const { data: recipes = [], isLoading: recipesLoading } = useQuery({
+  const {
+    data: recipes = [],
+    isLoading: recipesLoading,
+    refetch: refetchRecipes,
+    isRefetching
+  } = useQuery({
     queryKey: ['recipes'],
     queryFn: () => base44.entities.Recipe.list('-created_date', 50)
   });
@@ -223,6 +591,24 @@ export default function Home() {
       seedRecipesMutation.mutate();
     }
   }, [recipesLoading, recipes.length]);
+
+  // Handle refresh
+  const handleRefresh = async () => {
+    try {
+      await refetchRecipes();
+      toast({
+        title: "Recipes Refreshed!",
+        description: "Showing latest recipes"
+      });
+    } catch (error) {
+      console.error('Refresh error:', error);
+      toast({
+        title: "Refresh Failed",
+        description: "Please try again",
+        variant: "destructive"
+      });
+    }
+  };
 
   // Filter recipes based on search and filters
   const filteredRecipes = recipes.filter(recipe => {
@@ -442,6 +828,17 @@ export default function Home() {
               </span>
             )}
           </Button>
+
+          <Button
+            variant="outline"
+            onClick={handleRefresh}
+            disabled={isRefetching || seedRecipesMutation.isPending}
+            className="rounded-full"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isRefetching ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+
           {activeFiltersCount > 0 && (
             <Button
               variant="ghost"

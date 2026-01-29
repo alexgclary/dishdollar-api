@@ -4,7 +4,7 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Link as LinkIcon, Loader2, Sparkles, Check, Plus, Trash2, PenLine, DollarSign, Zap } from 'lucide-react';
+import { ArrowLeft, Link as LinkIcon, Loader2, Sparkles, Check, Plus, Trash2, PenLine, DollarSign, Zap, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -38,6 +38,7 @@ export default function AddRecipe() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [extractedData, setExtractedData] = useState(null);
   const [pantryItems, setPantryItems] = useState([]);
+  const [parseError, setParseError] = useState(null);
   
   const [manualRecipe, setManualRecipe] = useState({
     title: '', description: '', image_url: '', prep_time: 15, cook_time: 30, servings: 4,
@@ -65,11 +66,12 @@ export default function AddRecipe() {
 
     setIsProcessing(true);
     setExtractedData(null);
+    setParseError(null);
 
     try {
       // Use the new endpoint that searches Kroger for each ingredient
       let recipe = await parseRecipeWithPrices(url, userProfile);
-      
+
       // Fallback to LLM if backend parsing fails
       if (!recipe?.title) {
         const result = await base44.integrations.Core.InvokeLLM({
@@ -88,7 +90,7 @@ export default function AddRecipe() {
             }
           }
         });
-        
+
         if (result?.title) {
           result.source_url = url;
           // Get pricing for LLM-extracted recipe
@@ -101,14 +103,16 @@ export default function AddRecipe() {
         }
       }
 
-      if (!recipe?.title) throw new Error('Could not extract recipe');
-      
+      if (!recipe?.title) throw new Error('Could not extract recipe from this URL. The site may not be supported or the page may be behind a paywall.');
+
       setExtractedData(recipe);
       setPantryItems([]);
       toast({ title: "Recipe Extracted! 🎉", description: `Found: ${recipe.title}` });
     } catch (error) {
       console.error('Extraction error:', error);
-      toast({ title: "Extraction Failed", description: "Try a different URL or add manually.", variant: "destructive" });
+      const errorMessage = error.message || 'Could not extract recipe. Please try a different URL or add the recipe manually.';
+      setParseError(errorMessage);
+      toast({ title: "Extraction Failed", description: "Check the error message below", variant: "destructive" });
     } finally {
       setIsProcessing(false);
     }
@@ -216,6 +220,36 @@ export default function AddRecipe() {
                       {isProcessing ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" />Extracting...</> : <><Sparkles className="w-5 h-5 mr-2" />Extract Recipe</>}
                     </Button>
                   </div>
+
+                  {parseError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-red-50 border border-red-200 rounded-xl p-6"
+                    >
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-red-800 mb-1">
+                            Failed to Parse Recipe
+                          </h3>
+                          <p className="text-red-600 text-sm mb-3">
+                            {parseError}
+                          </p>
+                          <button
+                            onClick={() => {
+                              setParseError(null);
+                              setUrl('');
+                            }}
+                            className="border border-red-300 text-red-700 hover:bg-red-50 h-9 px-4 text-sm rounded-md font-medium transition-colors"
+                          >
+                            Try Again
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
                   <div className="pt-6 border-t">
                     <p className="text-sm font-medium text-gray-700 mb-3">Works great with:</p>
                     <div className="flex flex-wrap gap-2">

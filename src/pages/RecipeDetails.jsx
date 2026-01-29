@@ -297,13 +297,21 @@ export default function RecipeDetails() {
                   <Button onClick={() => addToBudgetMutation.mutate()} disabled={addToBudgetMutation.isPending} className="w-full rounded-full bg-green-500 hover:bg-green-600">
                     <Plus className="w-4 h-4 mr-2" />{addToBudgetMutation.isPending ? 'Adding...' : 'Add to Budget'}
                   </Button>
-                  
+
                   <Button variant="outline" onClick={() => setShowShoppingDialog(true)} className="w-full rounded-full border-2 border-green-500 text-green-600 hover:bg-green-50">
                     <ShoppingCart className="w-4 h-4 mr-2" />Shopping List
                   </Button>
 
                   <Button variant="outline" onClick={() => navigate(createPageUrl('MealPlanner'))} className="w-full rounded-full">
                     <Calendar className="w-4 h-4 mr-2" />Add to Meal Plan
+                  </Button>
+
+                  <Button
+                    onClick={() => window.open('https://docs.instacart.com/developer_platform_api/', '_blank')}
+                    className="w-full rounded-full bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <ShoppingCart className="w-5 h-5 mr-2" />
+                    Shop with Instacart
                   </Button>
                 </div>
 

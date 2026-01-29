@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { startOfWeek, addDays, format } from 'date-fns';
-import { ShoppingCart, Check, Copy, ExternalLink, ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { ShoppingCart, Check, Copy, ExternalLink, ArrowLeft, Plus, Trash2, Leaf, Beef, Milk, Package, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +16,14 @@ const CATEGORIES = {
   'Meat & Seafood': ['chicken', 'beef', 'pork', 'turkey', 'bacon', 'sausage', 'salmon', 'shrimp', 'fish', 'tuna', 'steak', 'pancetta'],
   'Dairy & Eggs': ['milk', 'egg', 'butter', 'cheese', 'cream', 'yogurt', 'sour cream', 'parmesan', 'mozzarella'],
   'Pantry': ['rice', 'pasta', 'flour', 'sugar', 'oil', 'vinegar', 'sauce', 'broth', 'beans', 'honey', 'soy sauce', 'coconut milk', 'chickpeas', 'quinoa']
+};
+
+const CATEGORY_ICONS = {
+  'Produce': Leaf,
+  'Meat & Seafood': Beef,
+  'Dairy & Eggs': Milk,
+  'Pantry': Package,
+  'Other': ShoppingBag
 };
 
 export default function ShoppingList() {
@@ -149,6 +157,25 @@ export default function ShoppingList() {
           <Button onClick={copyList} variant="outline" className="rounded-full"><Copy className="w-4 h-4 mr-2" />Copy</Button>
         </div>
 
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-600">
+                {checkedItems.size} of {allItems.length} items checked
+              </span>
+              <span className="text-sm text-gray-500">
+                {allItems.length > 0 ? Math.round((checkedItems.size / allItems.length) * 100) : 0}%
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${allItems.length > 0 ? (checkedItems.size / allItems.length) * 100 : 0}%` }}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-gray-800">{allItems.length}</p><p className="text-sm text-gray-500">Items</p></CardContent></Card>
           <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-green-600">{checkedItems.size}</p><p className="text-sm text-gray-500">Checked</p></CardContent></Card>
@@ -184,10 +211,18 @@ export default function ShoppingList() {
           </Card>
         )}
 
-        {Object.entries(categorizedIngredients).filter(([_, items]) => items.length > 0).map(([category, items]) => (
-          <Card key={category} className="mb-6">
-            <CardHeader><CardTitle>{category}</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
+        {Object.entries(categorizedIngredients).filter(([_, items]) => items.length > 0).map(([category, items]) => {
+          const CategoryIcon = CATEGORY_ICONS[category] || ShoppingBag;
+          return (
+            <Card key={category} className="mb-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CategoryIcon className={`w-5 h-5 ${category === 'Produce' ? 'text-green-600' : category === 'Meat & Seafood' ? 'text-red-600' : category === 'Dairy & Eggs' ? 'text-blue-600' : category === 'Pantry' ? 'text-amber-600' : 'text-gray-600'}`} />
+                  <span>{category}</span>
+                  <span className="text-sm font-normal text-gray-500">({items.length})</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
               {items.map((ing, i) => (
                 <div key={i} className={`flex items-center gap-3 p-3 rounded-xl ${checkedItems.has(ing.name) ? 'bg-green-50' : 'bg-gray-50'}`}>
                   <Checkbox checked={checkedItems.has(ing.name)} onCheckedChange={(checked) => {
@@ -206,7 +241,31 @@ export default function ShoppingList() {
               ))}
             </CardContent>
           </Card>
-        ))}
+        );
+        })}
+
+        <Card className="bg-white shadow-lg border-2 border-green-500">
+          <CardContent className="p-6">
+            <div className="flex flex-col md:flex-row gap-4">
+              <Button
+                onClick={copyList}
+                variant="outline"
+                className="flex-1 rounded-full border-2 border-green-500 text-green-600 hover:bg-green-50"
+              >
+                <Copy className="w-5 h-5 mr-2" />
+                Copy to Clipboard
+              </Button>
+
+              <Button
+                onClick={() => window.open('https://docs.instacart.com/developer_platform_api/', '_blank')}
+                className="flex-1 rounded-full bg-green-600 hover:bg-green-700 text-white"
+              >
+                <ShoppingCart className="w-5 h-5 mr-2" />
+                Checkout with Instacart
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
