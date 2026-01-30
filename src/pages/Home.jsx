@@ -498,13 +498,28 @@ export default function Home() {
   const [filters, setFilters] = useState({ cuisines: [], diets: [], maxCost: null, maxTime: null });
   const [showFilters, setShowFilters] = useState(false);
 
-  // Fetch user profile
+  // Fetch user profile (with localStorage fallback for demo)
   const { data: profileData, isLoading: profileLoading } = useQuery({
     queryKey: ['userProfile'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      const profiles = await base44.entities.UserProfile.filter({ user_id: user.id });
-      return profiles[0];
+      try {
+        const user = await base44.auth.me();
+        if (user?.id) {
+          const profiles = await base44.entities.UserProfile.filter({ user_id: user.id });
+          if (profiles && profiles.length > 0) {
+            return profiles[0];
+          }
+        }
+      } catch (error) {
+        console.log('Base44 auth not available, checking localStorage');
+      }
+
+      // Fallback to localStorage for demo mode
+      const localProfile = localStorage.getItem('budgetbite_profile');
+      if (localProfile) {
+        return JSON.parse(localProfile);
+      }
+      return null;
     }
   });
 
