@@ -1,0 +1,78 @@
+{
+  "mcpServers": {
+    
+    "puppeteer": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "--init", "mcp/puppeteer"],
+      "description": "Browser automation for recipe website scraping"
+    },
+
+    "playwright": {
+      "command": "npx",
+      "args": ["@anthropic-ai/mcp-server-playwright"],
+      "description": "Alternative browser automation with better cross-browser support"
+    },
+
+    "firecrawl": {
+      "command": "npx",
+      "args": ["@anthropic-ai/mcp-server-firecrawl"],
+      "env": {
+        "FIRECRAWL_API_KEY": "${FIRECRAWL_API_KEY}"
+      },
+      "description": "AI-powered web scraping for structured recipe extraction"
+    },
+
+    "supabase": {
+      "command": "npx",
+      "args": ["@supabase/mcp-server"],
+      "env": {
+        "SUPABASE_URL": "${SUPABASE_URL}",
+        "SUPABASE_SERVICE_KEY": "${SUPABASE_SERVICE_KEY}"
+      },
+      "description": "Direct Supabase database operations"
+    },
+
+    "postgres": {
+      "command": "npx",
+      "args": ["@anthropic-ai/mcp-server-postgres"],
+      "env": {
+        "POSTGRES_CONNECTION_STRING": "${DATABASE_URL}"
+      },
+      "description": "Natural language PostgreSQL queries"
+    },
+
+    "github": {
+      "command": "npx",
+      "args": ["@anthropic-ai/mcp-server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "description": "GitHub repository management and PR operations"
+    },
+
+    "filesystem": {
+      "command": "npx",
+      "args": ["@anthropic-ai/mcp-server-filesystem"],
+      "env": {
+        "ALLOWED_DIRECTORIES": "/path/to/budgetbite"
+      },
+      "description": "Local file system access for project files"
+    },
+
+    "zapier": {
+      "command": "npx",
+      "args": ["@anthropic-ai/mcp-server-zapier"],
+      "env": {
+        "ZAPIER_NLA_API_KEY": "${ZAPIER_NLA_API_KEY}"
+      },
+      "description": "Cross-app automation (email, notifications, calendar)"
+    },
+
+    "memory": {
+      "command": "npx",
+      "args": ["@anthropic-ai/mcp-server-memory"],
+      "description": "Persistent memory across Claude Code sessions"
+    }
+
+  }
+}

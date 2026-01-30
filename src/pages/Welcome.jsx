@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { base44 } from '@/api/base44Client';
+import { auth, entities } from '@/services';
 import { useQuery } from '@tanstack/react-query';
 import { ChefHat, Leaf, DollarSign, Heart, ArrowRight, Sparkles, Calendar, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,9 +16,15 @@ export default function Welcome() {
     queryKey: ['userProfile'],
     queryFn: async () => {
       try {
-        const user = await base44.auth.me();
+        // Check localStorage first for demo mode
+        const localProfile = localStorage.getItem('budgetbite_profile');
+        if (localProfile) {
+          return JSON.parse(localProfile);
+        }
+
+        const user = await auth.me();
         if (user) {
-          const profiles = await base44.entities.UserProfile.filter({ user_id: user.id });
+          const profiles = await entities.UserProfile.filter({ user_id: user.id });
           return profiles[0];
         }
         return null;

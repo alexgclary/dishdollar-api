@@ -1,14 +1,18 @@
-import { createClient } from '@base44/sdk';
-import { appParams } from '@/lib/app-params';
+/**
+ * BudgetBite Client
+ *
+ * This file provides backwards compatibility for code that imported from base44Client.
+ * All functionality now comes from the services module.
+ */
 
-const { appId, token, functionsVersion, appBaseUrl } = appParams;
+import budgetBite, { auth, entities } from '@/services';
 
-//Create a client with authentication required
-export const base44 = createClient({
-  appId,
-  token,
-  functionsVersion,
-  serverUrl: '',
-  requiresAuth: false,
-  appBaseUrl
-});
+// Re-export as base44 for backwards compatibility
+export const base44 = {
+  auth,
+  entities,
+  appLogs: budgetBite.appLogs,
+  integrations: budgetBite.integrations
+};
+
+export default base44;

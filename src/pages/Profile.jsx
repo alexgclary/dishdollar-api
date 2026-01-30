@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { auth, entities } from '@/services';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -53,15 +53,15 @@ export default function Profile() {
   const { data: profileData, isLoading } = useQuery({
     queryKey: ['userProfile'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      const profiles = await base44.entities.UserProfile.filter({ user_id: user.id });
+      const user = await auth.me();
+      const profiles = await entities.UserProfile.filter({ user_id: user.id });
       return profiles[0];
     }
   });
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me()
+    queryFn: () => auth.me()
   });
 
   useEffect(() => {
@@ -73,12 +73,14 @@ export default function Profile() {
 
   const updateProfileMutation = useMutation({
     mutationFn: async () => {
-      return base44.entities.UserProfile.update(profileId, formData);
+      // Update in localStorage for demo mode
+      localStorage.setItem('budgetbite_profile', JSON.stringify(formData));
+      return entities.UserProfile.update(profileId, formData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userProfile'] });
       toast({
-        title: "Profile Updated! ✨",
+        title: "Profile Updated!",
         description: "Your preferences have been saved"
       });
     },
@@ -97,7 +99,9 @@ export default function Profile() {
 
   const handleLogout = async () => {
     if (confirm('Are you sure you want to log out?')) {
-      await base44.auth.logout();
+      localStorage.removeItem('budgetbite_profile');
+      localStorage.removeItem('budgetbite_auth');
+      await auth.logout(window.location.origin);
     }
   };
 

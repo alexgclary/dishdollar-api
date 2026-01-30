@@ -1,5 +1,5 @@
 import React from 'react';
-import { base44 } from '@/api/base44Client';
+import { auth, entities } from '@/services';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -19,8 +19,8 @@ export default function Budget() {
   const { data: userProfile } = useQuery({
     queryKey: ['userProfile'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      const profiles = await base44.entities.UserProfile.filter({ user_id: user.id });
+      const user = await auth.me();
+      const profiles = await entities.UserProfile.filter({ user_id: user.id });
       return profiles[0];
     }
   });
@@ -28,13 +28,13 @@ export default function Budget() {
   const { data: budgetEntries = [] } = useQuery({
     queryKey: ['budgetEntries'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      return base44.entities.BudgetEntry.filter({ user_id: user.id });
+      const user = await auth.me();
+      return entities.BudgetEntry.filter({ user_id: user.id });
     }
   });
 
   const deleteEntryMutation = useMutation({
-    mutationFn: (entryId) => base44.entities.BudgetEntry.delete(entryId),
+    mutationFn: (entryId) => entities.BudgetEntry.delete(entryId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['budgetEntries'] });
       toast({

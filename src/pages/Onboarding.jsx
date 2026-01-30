@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { base44 } from '@/api/base44Client';
+import { auth, entities } from '@/services';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
@@ -118,46 +118,33 @@ export default function Onboarding() {
   const handleComplete = async () => {
     setIsLoading(true);
     try {
-      // Try to get the authenticated user
-      let userId = 'demo-user';
-      try {
-        const user = await base44.auth.me();
-        if (user?.id) {
-          userId = user.id;
-        }
-      } catch (authError) {
-        console.log('Auth not available, using demo mode');
-      }
+      // Get the authenticated user
+      const user = await auth.me();
+      const userId = user?.id || 'demo-user';
 
-      // Try to save to Base44
-      try {
-        await base44.entities.UserProfile.create({
-          ...formData,
-          user_id: userId,
-          onboarding_completed: true,
-          created_at: new Date().toISOString()
-        });
-      } catch (saveError) {
-        console.log('Base44 save failed, using localStorage fallback');
-        // Store in localStorage as fallback for demo
-        localStorage.setItem('budgetbite_profile', JSON.stringify({
-          ...formData,
-          user_id: userId,
-          onboarding_completed: true,
-          created_at: new Date().toISOString()
-        }));
-      }
+      // Save profile to database (with localStorage fallback)
+      const profileData = {
+        ...formData,
+        user_id: userId,
+        onboarding_completed: true,
+        created_at: new Date().toISOString()
+      };
+
+      await entities.UserProfile.create(profileData);
+
+      // Also save to localStorage for immediate access
+      localStorage.setItem('budgetbite_profile', JSON.stringify(profileData));
 
       toast({
-        title: "Welcome to BudgetBite! 🎉",
+        title: "Welcome to BudgetBite!",
         description: "Your profile has been set up successfully",
       });
 
-      // Always navigate to Home after onboarding
+      // Navigate to Home after onboarding
       navigate(createPageUrl('Home'));
     } catch (error) {
       console.error('Error in onboarding:', error);
-      // Even on error, save to localStorage and navigate for demo purposes
+      // Even on error, save to localStorage and navigate
       localStorage.setItem('budgetbite_profile', JSON.stringify({
         ...formData,
         user_id: 'demo-user',
@@ -166,7 +153,7 @@ export default function Onboarding() {
       }));
 
       toast({
-        title: "Welcome to BudgetBite! 🎉",
+        title: "Welcome to BudgetBite!",
         description: "Your profile has been set up successfully",
       });
 

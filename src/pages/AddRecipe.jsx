@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { auth, entities } from '@/services';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -17,10 +17,10 @@ import { FloatingVegetables } from '@/components/ui/DecorativeElements';
 import PillSelector from '@/components/onboarding/PillSelector';
 import { parseRecipeWithPrices, hasRealTimePricing, getRecipePricing } from '@/components/utils/pricingDatabase';
 
-const supportedSites = ['Allrecipes', 'NYT Cooking', 'Epicurious', 'Serious Eats', 'Bon Appétit', 'Food Network', 'Simply Recipes', 'Half Baked Harvest', 'Budget Bytes', 'Skinnytaste', 'BBC Good Food'];
+const supportedSites = ['Allrecipes', 'NYT Cooking', 'Epicurious', 'Serious Eats', 'Bon Appetit', 'Food Network', 'Simply Recipes', 'Half Baked Harvest', 'Budget Bytes', 'Skinnytaste', 'BBC Good Food'];
 
 const cuisineOptions = [
-  { value: 'Italian', icon: '🍝' }, { value: 'Mexican', icon: '🌮' }, { value: 'Indian', icon: '🍛' }, 
+  { value: 'Italian', icon: '🍝' }, { value: 'Mexican', icon: '🌮' }, { value: 'Indian', icon: '🍛' },
   { value: 'Chinese', icon: '🥡' }, { value: 'American', icon: '🍔' }, { value: 'Mediterranean', icon: '🥙' },
   { value: 'Japanese', icon: '🍣' }, { value: 'Thai', icon: '🍜' }, { value: 'French', icon: '🥐' }, { value: 'Korean', icon: '🍲' }
 ];
@@ -39,7 +39,7 @@ export default function AddRecipe() {
   const [extractedData, setExtractedData] = useState(null);
   const [pantryItems, setPantryItems] = useState([]);
   const [parseError, setParseError] = useState(null);
-  
+
   const [manualRecipe, setManualRecipe] = useState({
     title: '', description: '', image_url: '', prep_time: 15, cook_time: 30, servings: 4,
     cuisines: [], diets: [],
@@ -50,8 +50,8 @@ export default function AddRecipe() {
   const { data: userProfile } = useQuery({
     queryKey: ['userProfile'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      const profiles = await base44.entities.UserProfile.filter({ user_id: user.id });
+      const user = await auth.me();
+      const profiles = await entities.UserProfile.filter({ user_id: user.id });
       return profiles[0];
     }
   });
@@ -72,42 +72,11 @@ export default function AddRecipe() {
       // Use the new endpoint that searches Kroger for each ingredient
       let recipe = await parseRecipeWithPrices(url, userProfile);
 
-      // Fallback to LLM if backend parsing fails
-      if (!recipe?.title) {
-        const result = await base44.integrations.Core.InvokeLLM({
-          prompt: `Extract recipe from: ${url}. Return JSON: title, description, prep_time (min), cook_time (min), servings, cuisines[], diets[], ingredients[{name, amount, unit}], instructions[], image_url`,
-          add_context_from_internet: true,
-          response_json_schema: {
-            type: "object",
-            properties: {
-              title: { type: "string" }, description: { type: "string" },
-              prep_time: { type: "number" }, cook_time: { type: "number" }, servings: { type: "number" },
-              cuisines: { type: "array", items: { type: "string" } },
-              diets: { type: "array", items: { type: "string" } },
-              ingredients: { type: "array", items: { type: "object", properties: { name: { type: "string" }, amount: { type: "number" }, unit: { type: "string" } } } },
-              instructions: { type: "array", items: { type: "string" } },
-              image_url: { type: "string" }
-            }
-          }
-        });
-
-        if (result?.title) {
-          result.source_url = url;
-          // Get pricing for LLM-extracted recipe
-          const pricing = await getRecipePricing(result.ingredients || [], userProfile);
-          result.ingredients = result.ingredients?.map((ing, i) => ({
-            ...ing, estimated_price: pricing.breakdown?.[i]?.estimatedPrice || 2.50
-          }));
-          result.total_cost = pricing.totalCost;
-          recipe = result;
-        }
-      }
-
       if (!recipe?.title) throw new Error('Could not extract recipe from this URL. The site may not be supported or the page may be behind a paywall.');
 
       setExtractedData(recipe);
       setPantryItems([]);
-      toast({ title: "Recipe Extracted! 🎉", description: `Found: ${recipe.title}` });
+      toast({ title: "Recipe Extracted!", description: `Found: ${recipe.title}` });
     } catch (error) {
       console.error('Extraction error:', error);
       const errorMessage = error.message || 'Could not extract recipe. Please try a different URL or add the recipe manually.';
@@ -121,11 +90,11 @@ export default function AddRecipe() {
   const saveRecipeMutation = useMutation({
     mutationFn: async (recipeData) => {
       const totalCost = recipeData.ingredients?.reduce((sum, ing) => sum + (parseFloat(ing.estimated_price) || 0), 0) || recipeData.total_cost || 0;
-      return base44.entities.Recipe.create({ ...recipeData, total_cost: totalCost, is_custom: true });
+      return entities.Recipe.create({ ...recipeData, total_cost: totalCost, is_custom: true });
     },
     onSuccess: (recipe) => {
       queryClient.invalidateQueries({ queryKey: ['recipes'] });
-      toast({ title: "Recipe Saved! 🎉" });
+      toast({ title: "Recipe Saved!" });
       navigate(createPageUrl('RecipeDetails') + `?id=${recipe.id}`);
     },
     onError: () => toast({ title: "Error", description: "Failed to save recipe.", variant: "destructive" })

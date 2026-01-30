@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { auth, entities } from '@/services';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -21,14 +21,14 @@ export default function RecipeDetails() {
   const [showShoppingDialog, setShowShoppingDialog] = useState(false);
   const [copiedList, setCopiedList] = useState(false);
   const [manualPantryItems, setManualPantryItems] = useState([]);
-  
+
   const urlParams = new URLSearchParams(window.location.search);
   const recipeId = urlParams.get('id');
 
   const { data: recipeData, isLoading } = useQuery({
     queryKey: ['recipe', recipeId],
     queryFn: async () => {
-      const recipes = await base44.entities.Recipe.filter({ id: recipeId });
+      const recipes = await entities.Recipe.filter({ id: recipeId });
       return recipes[0];
     },
     enabled: !!recipeId
@@ -37,8 +37,8 @@ export default function RecipeDetails() {
   const { data: profileData } = useQuery({
     queryKey: ['userProfile'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      const profiles = await base44.entities.UserProfile.filter({ user_id: user.id });
+      const user = await auth.me();
+      const profiles = await entities.UserProfile.filter({ user_id: user.id });
       return profiles[0];
     }
   });
@@ -46,19 +46,19 @@ export default function RecipeDetails() {
   const { data: savedRecipes = [] } = useQuery({
     queryKey: ['savedRecipes'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      return base44.entities.SavedRecipe.filter({ user_id: user.id });
+      const user = await auth.me();
+      return entities.SavedRecipe.filter({ user_id: user.id });
     }
   });
 
   const saveRecipeMutation = useMutation({
     mutationFn: async () => {
-      const user = await base44.auth.me();
+      const user = await auth.me();
       const existing = savedRecipes.find(sr => sr.recipe_id === recipe.id);
       if (existing) {
-        return base44.entities.SavedRecipe.delete(existing.id);
+        return entities.SavedRecipe.delete(existing.id);
       } else {
-        return base44.entities.SavedRecipe.create({
+        return entities.SavedRecipe.create({
           user_id: user.id,
           recipe_id: recipe.id,
           saved_at: new Date().toISOString(),
@@ -73,9 +73,9 @@ export default function RecipeDetails() {
 
   const addToBudgetMutation = useMutation({
     mutationFn: async () => {
-      const user = await base44.auth.me();
+      const user = await auth.me();
       const scaledCost = calculateTotalCost();
-      return base44.entities.BudgetEntry.create({
+      return entities.BudgetEntry.create({
         user_id: user.id,
         recipe_id: recipe.id,
         recipe_title: recipe.title,
@@ -86,7 +86,7 @@ export default function RecipeDetails() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['budgetEntries'] });
-      toast({ title: "Added to budget! 💰", description: `$${calculateTotalCost().toFixed(2)} added to your spending tracker` });
+      toast({ title: "Added to budget!", description: `$${calculateTotalCost().toFixed(2)} added to your spending tracker` });
     }
   });
 

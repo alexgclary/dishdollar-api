@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { auth, entities } from '@/services';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -20,8 +20,8 @@ export default function SavedRecipes() {
   const { data: userProfile } = useQuery({
     queryKey: ['userProfile'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      const profiles = await base44.entities.UserProfile.filter({ user_id: user.id });
+      const user = await auth.me();
+      const profiles = await entities.UserProfile.filter({ user_id: user.id });
       return profiles[0];
     }
   });
@@ -30,21 +30,21 @@ export default function SavedRecipes() {
   const { data: savedRecipes = [] } = useQuery({
     queryKey: ['savedRecipes'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      return base44.entities.SavedRecipe.filter({ user_id: user.id });
+      const user = await auth.me();
+      return entities.SavedRecipe.filter({ user_id: user.id });
     }
   });
 
   // Fetch all recipes to get details
   const { data: allRecipes = [] } = useQuery({
     queryKey: ['recipes'],
-    queryFn: () => base44.entities.Recipe.list('-created_date', 100)
+    queryFn: () => entities.Recipe.list('-created_date', 100)
   });
 
   // Remove recipe mutation
   const removeRecipeMutation = useMutation({
     mutationFn: async (savedRecipeId) => {
-      return base44.entities.SavedRecipe.delete(savedRecipeId);
+      return entities.SavedRecipe.delete(savedRecipeId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['savedRecipes'] });

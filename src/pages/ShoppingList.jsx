@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { base44 } from '@/api/base44Client';
+import { auth, entities } from '@/services';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -38,8 +38,8 @@ export default function ShoppingList() {
   const { data: userProfile } = useQuery({
     queryKey: ['userProfile'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      const profiles = await base44.entities.UserProfile.filter({ user_id: user.id });
+      const user = await auth.me();
+      const profiles = await entities.UserProfile.filter({ user_id: user.id });
       return profiles[0];
     }
   });
@@ -47,14 +47,14 @@ export default function ShoppingList() {
   const { data: mealPlans = [] } = useQuery({
     queryKey: ['mealPlans'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      return base44.entities.MealPlan.filter({ user_id: user.id });
+      const user = await auth.me();
+      return entities.MealPlan.filter({ user_id: user.id });
     }
   });
 
   const { data: recipes = [] } = useQuery({
     queryKey: ['recipes'],
-    queryFn: () => base44.entities.Recipe.list()
+    queryFn: () => entities.Recipe.list()
   });
 
   const aggregatedIngredients = useMemo(() => {

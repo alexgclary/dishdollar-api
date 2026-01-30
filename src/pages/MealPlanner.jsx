@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { auth, entities } from '@/services';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -26,8 +26,8 @@ export default function MealPlanner() {
   const { data: userProfile } = useQuery({
     queryKey: ['userProfile'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      const profiles = await base44.entities.UserProfile.filter({ user_id: user.id });
+      const user = await auth.me();
+      const profiles = await entities.UserProfile.filter({ user_id: user.id });
       return profiles[0];
     }
   });
@@ -35,21 +35,21 @@ export default function MealPlanner() {
   const { data: mealPlans = [] } = useQuery({
     queryKey: ['mealPlans', currentWeekStart.toISOString()],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      return base44.entities.MealPlan.filter({ user_id: user.id });
+      const user = await auth.me();
+      return entities.MealPlan.filter({ user_id: user.id });
     }
   });
 
   const { data: recipes = [] } = useQuery({
     queryKey: ['recipes'],
-    queryFn: () => base44.entities.Recipe.list('-created_date', 50)
+    queryFn: () => entities.Recipe.list('-created_date', 50)
   });
 
   const { data: savedRecipes = [] } = useQuery({
     queryKey: ['savedRecipes'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      return base44.entities.SavedRecipe.filter({ user_id: user.id });
+      const user = await auth.me();
+      return entities.SavedRecipe.filter({ user_id: user.id });
     }
   });
 
@@ -57,10 +57,10 @@ export default function MealPlanner() {
 
   const addMealMutation = useMutation({
     mutationFn: async ({ date, mealType, recipe }) => {
-      const user = await base44.auth.me();
+      const user = await auth.me();
       const householdSize = userProfile?.household_size || 1;
       const scaledCost = ((recipe.total_cost || 0) / (recipe.servings || 4)) * householdSize;
-      return base44.entities.MealPlan.create({
+      return entities.MealPlan.create({
         user_id: user.id,
         date: format(date, 'yyyy-MM-dd'),
         meal_type: mealType,
@@ -74,12 +74,12 @@ export default function MealPlanner() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mealPlans'] });
       setShowRecipeDialog(false);
-      toast({ title: "Meal added! 🍽️" });
+      toast({ title: "Meal added!" });
     }
   });
 
   const removeMealMutation = useMutation({
-    mutationFn: (mealId) => base44.entities.MealPlan.delete(mealId),
+    mutationFn: (mealId) => entities.MealPlan.delete(mealId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mealPlans'] });
       toast({ title: "Meal removed" });

@@ -1,39 +1,78 @@
-**Welcome to your Base44 project** 
+# BudgetBite
 
-**About**
+A recipe and meal planning app that helps users discover healthy, affordable recipes and purchase ingredients at real-time prices from their preferred grocery stores.
 
-View and Edit  your app on [Base44.com](http://Base44.com) 
+## Getting Started
 
-This project contains everything you need to run your app locally.
+### Prerequisites
 
-**Edit the code in your local development environment**
+- Node.js 18+
+- npm or yarn
 
-Any change pushed to the repo will also be reflected in the Base44 Builder.
+### Installation
 
-**Prerequisites:** 
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-1. Clone the repository using the project's Git URL 
-2. Navigate to the project directory
-3. Install dependencies: `npm install`
-4. Create an `.env.local` file and set the right environment variables
+3. Create an `.env.local` file (optional - app works in demo mode without these):
+   ```
+   # Supabase Configuration (optional)
+   VITE_SUPABASE_URL=your_supabase_url
+   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 
+   # Backend API (optional)
+   VITE_API_BASE_URL=your_heroku_backend_url
+   ```
+
+4. Run the development server:
+   ```bash
+   npm run dev
+   ```
+
+### Demo Mode
+
+The app works fully in demo mode without any external services. All data is stored in localStorage. This is great for:
+- Testing and development
+- Demonstrations
+- Quick setup without backend configuration
+
+### Production Mode
+
+For production, configure Supabase for:
+- User authentication
+- Data persistence
+- Cross-device sync
+
+## Deployment
+
+### Vercel (Frontend)
+
+```bash
+vercel deploy
 ```
-VITE_BASE44_APP_ID=your_app_id
-VITE_BASE44_APP_BASE_URL=your_backend_url
 
-e.g.
-VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
+### Heroku (Backend)
+
+```bash
+git push heroku main
 ```
 
-Run the app: `npm run dev`
+## Tech Stack
 
-**Publish your changes**
+- **Frontend**: React + Vite + Tailwind CSS
+- **UI Components**: Radix UI + shadcn/ui
+- **State Management**: TanStack Query
+- **Database**: Supabase (PostgreSQL)
+- **Hosting**: Vercel (frontend), Heroku (backend)
 
-Open [Base44.com](http://Base44.com) and click on Publish.
+## Features
 
-**Docs & Support**
-
-Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.base44.com/Integrations/Using-GitHub)
-
-Support: [https://app.base44.com/support](https://app.base44.com/support)
+- Recipe discovery and management
+- Meal planning calendar
+- Shopping list generation
+- Budget tracking
+- Pantry management
+- Multiple dietary preferences support

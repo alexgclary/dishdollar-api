@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { auth, entities } from '@/services';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -503,15 +503,15 @@ export default function Home() {
     queryKey: ['userProfile'],
     queryFn: async () => {
       try {
-        const user = await base44.auth.me();
+        const user = await auth.me();
         if (user?.id) {
-          const profiles = await base44.entities.UserProfile.filter({ user_id: user.id });
+          const profiles = await entities.UserProfile.filter({ user_id: user.id });
           if (profiles && profiles.length > 0) {
             return profiles[0];
           }
         }
       } catch (error) {
-        console.log('Base44 auth not available, checking localStorage');
+        console.log('Auth not available, checking localStorage');
       }
 
       // Fallback to localStorage for demo mode
@@ -531,15 +531,15 @@ export default function Home() {
     isRefetching
   } = useQuery({
     queryKey: ['recipes'],
-    queryFn: () => base44.entities.Recipe.list('-created_date', 50)
+    queryFn: () => entities.Recipe.list('-created_date', 50)
   });
 
   // Fetch saved recipes
   const { data: savedRecipes = [] } = useQuery({
     queryKey: ['savedRecipes'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      return base44.entities.SavedRecipe.filter({ user_id: user.id });
+      const user = await auth.me();
+      return entities.SavedRecipe.filter({ user_id: user.id });
     }
   });
 
@@ -547,8 +547,8 @@ export default function Home() {
   const { data: budgetEntries = [] } = useQuery({
     queryKey: ['budgetEntries'],
     queryFn: async () => {
-      const user = await base44.auth.me();
-      return base44.entities.BudgetEntry.filter({ user_id: user.id });
+      const user = await auth.me();
+      return entities.BudgetEntry.filter({ user_id: user.id });
     }
   });
 
@@ -556,7 +556,7 @@ export default function Home() {
   const seedRecipesMutation = useMutation({
     mutationFn: async () => {
       for (const recipe of sampleRecipes) {
-        await base44.entities.Recipe.create(recipe);
+        await entities.Recipe.create(recipe);
       }
     },
     onSuccess: () => {
@@ -571,12 +571,12 @@ export default function Home() {
   // Save recipe mutation
   const saveRecipeMutation = useMutation({
     mutationFn: async (recipe) => {
-      const user = await base44.auth.me();
+      const user = await auth.me();
       const existing = savedRecipes.find(sr => sr.recipe_id === recipe.id);
       if (existing) {
-        return base44.entities.SavedRecipe.delete(existing.id);
+        return entities.SavedRecipe.delete(existing.id);
       } else {
-        return base44.entities.SavedRecipe.create({
+        return entities.SavedRecipe.create({
           user_id: user.id,
           recipe_id: recipe.id,
           saved_at: new Date().toISOString()
