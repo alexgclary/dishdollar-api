@@ -88,7 +88,7 @@ export default function Layout({ children, currentPageName }) {
               <ChefHat className="w-6 h-6 text-white" />
             </div>
             <span className="hidden lg:block text-xl font-bold bg-gradient-to-r from-green-600 to-emerald-500 bg-clip-text text-transparent">
-              BudgetBite
+              DishDollar
             </span>
           </Link>
         </div>

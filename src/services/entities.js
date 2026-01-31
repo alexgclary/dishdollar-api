@@ -6,7 +6,7 @@ import { supabase, isSupabaseConfigured } from '@/api/supabase';
  * @param {string} [tableName] - Optional Supabase table name if different from entityName
  */
 function createEntityService(entityName, tableName = null) {
-  const STORAGE_KEY = `budgetbite_${entityName.toLowerCase()}`;
+  const STORAGE_KEY = `dishdollar_${entityName.toLowerCase()}`;
   const TABLE_NAME = tableName || entityName.toLowerCase();
 
   // Get all items from localStorage

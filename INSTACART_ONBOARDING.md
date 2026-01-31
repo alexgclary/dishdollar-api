@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide walks through the process of integrating BudgetBite with Instacart's Developer Platform to enable multi-store grocery shopping and affiliate monetization.
+This guide walks through the process of integrating DishDollar with Instacart's Developer Platform to enable multi-store grocery shopping and affiliate monetization.
 
 ---
 
@@ -12,7 +12,7 @@ This guide walks through the process of integrating BudgetBite with Instacart's 
 https://www.instacart.com/company/business/developers
 
 ### Required Information
-- Business name: BudgetBite
+- Business name: DishDollar
 - Business type: Meal planning app
 - Contact details
 - Description of intended use case
@@ -20,7 +20,7 @@ https://www.instacart.com/company/business/developers
 
 ### Use Case Description Template
 ```
-BudgetBite is a recipe and meal planning application that helps users discover 
+DishDollar is a recipe and meal planning application that helps users discover 
 healthy, affordable recipes based on their dietary preferences and pantry items. 
 
 We want to integrate Instacart's Developer Platform to:
@@ -67,11 +67,11 @@ curl --request POST \
 ```json
 {
   "title": "Mediterranean Chicken Bowl",
-  "image_url": "https://budgetbite.app/images/recipes/med-chicken-bowl.jpg",
-  "author": "BudgetBite",
+  "image_url": "https://dishdollar.com/images/recipes/med-chicken-bowl.jpg",
+  "author": "DishDollar",
   "servings": 4,
   "cooking_time": 35,
-  "external_reference_id": "budgetbite-recipe-12345",
+  "external_reference_id": "dishdollar-recipe-12345",
   "expires_in": 2592000,
   "instructions": [
     "Season chicken with oregano, salt, and pepper",
@@ -128,7 +128,7 @@ curl --request POST \
     }
   ],
   "landing_page_configuration": {
-    "partner_linkback_url": "https://budgetbite.app/recipe/med-chicken-bowl",
+    "partner_linkback_url": "https://dishdollar.com/recipe/med-chicken-bowl",
     "enable_pantry_items": true
   }
 }
@@ -378,11 +378,11 @@ router.post('/instacart', async (req, res) => {
         image_url: recipe.image_url,
         servings: recipe.servings,
         cooking_time: recipe.total_time_minutes,
-        external_reference_id: `budgetbite-${recipe.id}`,
+        external_reference_id: `dishdollar-${recipe.id}`,
         expires_in: 2592000, // 30 days
         ingredients,
         landing_page_configuration: {
-          partner_linkback_url: `https://budgetbite.app/recipe/${recipe.slug}`,
+          partner_linkback_url: `https://dishdollar.com/recipe/${recipe.slug}`,
           enable_pantry_items: enablePantryItems
         }
       })

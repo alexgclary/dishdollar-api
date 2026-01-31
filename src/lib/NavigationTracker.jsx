@@ -32,7 +32,7 @@ export default function NavigationTracker() {
 
         // Log page views for analytics (console only in demo mode)
         if (isAuthenticated && pageName) {
-            console.log(`[BudgetBite] Page view: ${pageName}`);
+            console.log(`[DishDollar] Page view: ${pageName}`);
         }
     }, [location, isAuthenticated, Pages, mainPageKey]);
 

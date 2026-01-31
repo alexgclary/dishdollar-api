@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Search, Sparkles, ChefHat, TrendingUp, BookOpen, Calendar, Compass, Filter, X, RefreshCw } from 'lucide-react';
+import StoreSwitcher from '@/components/StoreSwitcher';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -515,7 +516,7 @@ export default function Home() {
       }
 
       // Fallback to localStorage for demo mode
-      const localProfile = localStorage.getItem('budgetbite_profile');
+      const localProfile = localStorage.getItem('dishdollar_profile');
       if (localProfile) {
         return JSON.parse(localProfile);
       }
@@ -715,6 +716,11 @@ export default function Home() {
         </div>
         
         <div className="relative max-w-7xl mx-auto px-6 py-12">
+          {/* Store Switcher in top right */}
+          <div className="absolute top-4 right-6">
+            <StoreSwitcher compact className="bg-white/20 hover:bg-white/30 text-white rounded-full" />
+          </div>
+
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

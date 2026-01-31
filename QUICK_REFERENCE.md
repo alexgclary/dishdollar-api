@@ -1,4 +1,4 @@
-# BudgetBite Quick Reference Card
+# DishDollar Quick Reference Card
 
 ## 🎯 Primary Integration: Instacart Developer Platform
 

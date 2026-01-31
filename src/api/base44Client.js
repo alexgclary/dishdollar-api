@@ -1,18 +1,18 @@
 /**
- * BudgetBite Client
+ * DishDollar Client
  *
  * This file provides backwards compatibility for code that imported from base44Client.
  * All functionality now comes from the services module.
  */
 
-import budgetBite, { auth, entities } from '@/services';
+import dishDollar, { auth, entities } from '@/services';
 
 // Re-export as base44 for backwards compatibility
 export const base44 = {
   auth,
   entities,
-  appLogs: budgetBite.appLogs,
-  integrations: budgetBite.integrations
+  appLogs: dishDollar.appLogs,
+  integrations: dishDollar.integrations
 };
 
 export default base44;

@@ -1,15 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { auth, entities } from '@/services';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { startOfWeek, addDays, format } from 'date-fns';
-import { ShoppingCart, Check, Copy, ExternalLink, ArrowLeft, Plus, Trash2, Leaf, Beef, Milk, Package, ShoppingBag } from 'lucide-react';
+import { ShoppingCart, Check, Copy, ExternalLink, ArrowLeft, Plus, Trash2, Leaf, Beef, Milk, Package, ShoppingBag, X, ChefHat } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/use-toast';
+import { shoppingListStorage, COMMON_GROCERY_ITEMS } from '@/utils/shoppingListStorage';
 
 const CATEGORIES = {
   'Produce': ['onion', 'garlic', 'tomato', 'potato', 'carrot', 'celery', 'pepper', 'broccoli', 'spinach', 'lettuce', 'cucumber', 'avocado', 'lemon', 'lime', 'ginger', 'cilantro', 'basil', 'parsley', 'kale', 'mushroom'],
@@ -29,11 +30,43 @@ const CATEGORY_ICONS = {
 export default function ShoppingList() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [checkedItems, setCheckedItems] = useState(new Set());
-  const [manualItems, setManualItems] = useState([]);
+  const [persistedItems, setPersistedItems] = useState([]);
   const [newItem, setNewItem] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const inputRef = useRef(null);
+  const suggestionsRef = useRef(null);
   const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 0 });
   const weekDays = Array.from({ length: 7 }, (_, i) => format(addDays(currentWeekStart, i), 'yyyy-MM-dd'));
+
+  // Load persisted items from localStorage on mount
+  useEffect(() => {
+    setPersistedItems(shoppingListStorage.getItems());
+  }, []);
+
+  // Handle click outside to close suggestions
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target) &&
+          inputRef.current && !inputRef.current.contains(event.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Update suggestions as user types
+  useEffect(() => {
+    if (newItem.length >= 2) {
+      const matches = shoppingListStorage.getSuggestions(newItem, 8);
+      setSuggestions(matches);
+      setShowSuggestions(matches.length > 0);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [newItem]);
 
   const { data: userProfile } = useQuery({
     queryKey: ['userProfile'],
@@ -107,33 +140,157 @@ export default function ShoppingList() {
     return result;
   }, [aggregatedIngredients]);
 
-  const totalCost = aggregatedIngredients.reduce((sum, ing) => sum + ing.totalPrice, 0);
-  const checkedCost = aggregatedIngredients.filter(ing => checkedItems.has(ing.name)).reduce((sum, ing) => sum + ing.totalPrice, 0);
+  // Combine meal plan items with persisted items (avoiding duplicates)
+  const combinedItems = useMemo(() => {
+    const itemMap = new Map();
+
+    // Add meal plan derived items
+    aggregatedIngredients.forEach(ing => {
+      const key = ing.name.toLowerCase();
+      itemMap.set(key, {
+        ...ing,
+        id: `meal_${key}`,
+        checked: false,
+        source: 'Meal Plan',
+        sources: ing.recipes
+      });
+    });
+
+    // Merge persisted items
+    persistedItems.forEach(item => {
+      const key = item.name.toLowerCase();
+      if (itemMap.has(key)) {
+        // Merge sources
+        const existing = itemMap.get(key);
+        const allSources = new Set([...existing.sources, ...(item.sources || [item.source])]);
+        existing.sources = Array.from(allSources);
+        existing.checked = item.checked;
+        existing.id = item.id;
+      } else {
+        itemMap.set(key, {
+          name: item.name,
+          amount: item.quantity || 1,
+          unit: item.unit || '',
+          recipes: item.sources || [item.source || 'Added'],
+          sources: item.sources || [item.source || 'Added'],
+          totalPrice: 0,
+          id: item.id,
+          checked: item.checked,
+          source: item.source || 'Added'
+        });
+      }
+    });
+
+    return Array.from(itemMap.values());
+  }, [aggregatedIngredients, persistedItems]);
+
+  const checkedCount = combinedItems.filter(item => item.checked).length;
+  const totalCost = combinedItems.reduce((sum, ing) => sum + (ing.totalPrice || 0), 0);
+  const checkedCost = combinedItems.filter(ing => ing.checked).reduce((sum, ing) => sum + (ing.totalPrice || 0), 0);
 
   const copyList = () => {
-    const text = aggregatedIngredients.map(i => `□ ${i.amount.toFixed(1)} ${i.unit} ${i.name}`).join('\n');
+    const text = combinedItems.map(i => `${i.checked ? '☑' : '☐'} ${i.amount ? i.amount.toFixed(1) : ''} ${i.unit || ''} ${i.name}`.trim()).join('\n');
     navigator.clipboard.writeText(`Shopping List\n\n${text}`);
     toast({ title: "Copied!", description: "Shopping list copied to clipboard" });
   };
 
-  const addManualItem = () => {
-    if (!newItem.trim()) return;
-    setManualItems([...manualItems, { id: Date.now(), name: newItem, checked: false }]);
+  const addItem = (itemName) => {
+    if (!itemName?.trim()) return;
+    const items = shoppingListStorage.addItem({ name: itemName.trim(), source: 'manual' });
+    setPersistedItems(items);
     setNewItem('');
+    setShowSuggestions(false);
+    toast({ title: "Added!", description: `${itemName} added to your list` });
   };
 
-  const allItems = [...aggregatedIngredients, ...manualItems.map(m => ({ name: m.name, amount: 1, unit: '', recipes: ['Manual'], totalPrice: 0 }))];
+  const toggleItemCheck = (item) => {
+    if (item.id?.startsWith('meal_')) {
+      // For meal plan items, add to persisted storage to track checked state
+      const existingItem = persistedItems.find(p => p.name.toLowerCase() === item.name.toLowerCase());
+      if (existingItem) {
+        const items = shoppingListStorage.toggleItem(existingItem.id);
+        setPersistedItems(items);
+      } else {
+        // Add to storage with checked state
+        const items = shoppingListStorage.addItem({ name: item.name, source: 'Meal Plan' });
+        const newItem = items.find(i => i.name.toLowerCase() === item.name.toLowerCase());
+        if (newItem) {
+          const updated = shoppingListStorage.toggleItem(newItem.id);
+          setPersistedItems(updated);
+        }
+      }
+    } else {
+      const items = shoppingListStorage.toggleItem(item.id);
+      setPersistedItems(items);
+    }
+  };
 
-  if (allItems.length === 0) {
+  const removeItem = (item) => {
+    if (!item.id?.startsWith('meal_')) {
+      const items = shoppingListStorage.removeItem(item.id);
+      setPersistedItems(items);
+      toast({ title: "Removed", description: `${item.name} removed from list` });
+    }
+  };
+
+  const clearChecked = () => {
+    const items = shoppingListStorage.clearChecked();
+    setPersistedItems(items);
+    toast({ title: "Cleared", description: "Checked items removed" });
+  };
+
+  const clearAll = () => {
+    const items = shoppingListStorage.clearAll();
+    setPersistedItems([]);
+    toast({ title: "Cleared", description: "Shopping list cleared" });
+  };
+
+  // Group items by source for display
+  const groupedItems = useMemo(() => {
+    const groups = {};
+    combinedItems.forEach(item => {
+      const primarySource = item.source || item.sources?.[0] || 'Other';
+      if (!groups[primarySource]) {
+        groups[primarySource] = [];
+      }
+      groups[primarySource].push(item);
+    });
+    return groups;
+  }, [combinedItems]);
+
+  if (combinedItems.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-amber-50 flex items-center justify-center p-6">
         <Card className="max-w-md text-center p-8">
           <ShoppingCart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-gray-800 mb-2">No items yet</h2>
-          <p className="text-gray-500 mb-6">Plan some meals first or add items manually</p>
-          <div className="flex gap-2 mb-4">
-            <Input value={newItem} onChange={(e) => setNewItem(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addManualItem()} placeholder="Add item..." className="rounded-xl" />
-            <Button onClick={addManualItem} className="rounded-full bg-green-500"><Plus className="w-5 h-5" /></Button>
+          <p className="text-gray-500 mb-6">Add items from recipes or type them in below</p>
+          <div className="relative mb-4">
+            <div className="flex gap-2">
+              <Input
+                ref={inputRef}
+                value={newItem}
+                onChange={(e) => setNewItem(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && addItem(newItem)}
+                onFocus={() => newItem.length >= 2 && suggestions.length > 0 && setShowSuggestions(true)}
+                placeholder="Add item..."
+                className="rounded-xl"
+              />
+              <Button onClick={() => addItem(newItem)} className="rounded-full bg-green-500"><Plus className="w-5 h-5" /></Button>
+            </div>
+            {showSuggestions && suggestions.length > 0 && (
+              <div ref={suggestionsRef} className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-auto">
+                {suggestions.map((suggestion, i) => (
+                  <button
+                    key={i}
+                    onClick={() => addItem(suggestion)}
+                    className="w-full px-4 py-2 text-left hover:bg-green-50 text-gray-700 first:rounded-t-xl last:rounded-b-xl"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <Button onClick={() => navigate(createPageUrl('MealPlanner'))} className="rounded-full bg-green-500">Go to Meal Planner</Button>
         </Card>
@@ -161,88 +318,151 @@ export default function ShoppingList() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-600">
-                {checkedItems.size} of {allItems.length} items checked
+                {checkedCount} of {combinedItems.length} items checked
               </span>
               <span className="text-sm text-gray-500">
-                {allItems.length > 0 ? Math.round((checkedItems.size / allItems.length) * 100) : 0}%
+                {combinedItems.length > 0 ? Math.round((checkedCount / combinedItems.length) * 100) : 0}%
               </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
               <div
                 className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${allItems.length > 0 ? (checkedItems.size / allItems.length) * 100 : 0}%` }}
+                style={{ width: `${combinedItems.length > 0 ? (checkedCount / combinedItems.length) * 100 : 0}%` }}
               />
             </div>
           </CardContent>
         </Card>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-gray-800">{allItems.length}</p><p className="text-sm text-gray-500">Items</p></CardContent></Card>
-          <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-green-600">{checkedItems.size}</p><p className="text-sm text-gray-500">Checked</p></CardContent></Card>
+          <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-gray-800">{combinedItems.length}</p><p className="text-sm text-gray-500">Items</p></CardContent></Card>
+          <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-green-600">{checkedCount}</p><p className="text-sm text-gray-500">Checked</p></CardContent></Card>
           <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-gray-800">${totalCost.toFixed(2)}</p><p className="text-sm text-gray-500">Est. Total</p></CardContent></Card>
           <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-green-600">${(totalCost - checkedCost).toFixed(2)}</p><p className="text-sm text-gray-500">Remaining</p></CardContent></Card>
         </div>
 
         <Card className="mb-6">
           <CardContent className="p-4">
-            <div className="flex gap-2">
-              <Input value={newItem} onChange={(e) => setNewItem(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addManualItem()} placeholder="Add item manually..." className="rounded-xl" />
-              <Button onClick={addManualItem} className="rounded-full bg-green-500 hover:bg-green-600"><Plus className="w-5 h-5" /></Button>
+            <div className="flex gap-2 items-center justify-between mb-3">
+              <h3 className="font-medium text-gray-700">Add Items</h3>
+              {checkedCount > 0 && (
+                <Button onClick={clearChecked} variant="outline" size="sm" className="text-red-500 border-red-200 hover:bg-red-50">
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Clear Checked ({checkedCount})
+                </Button>
+              )}
+            </div>
+            <div className="relative">
+              <div className="flex gap-2">
+                <Input
+                  ref={inputRef}
+                  value={newItem}
+                  onChange={(e) => setNewItem(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && addItem(newItem)}
+                  onFocus={() => newItem.length >= 2 && suggestions.length > 0 && setShowSuggestions(true)}
+                  placeholder="Type to search or add item..."
+                  className="rounded-xl"
+                />
+                <Button onClick={() => addItem(newItem)} className="rounded-full bg-green-500 hover:bg-green-600"><Plus className="w-5 h-5" /></Button>
+              </div>
+              {showSuggestions && suggestions.length > 0 && (
+                <div ref={suggestionsRef} className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-auto">
+                  {suggestions.map((suggestion, i) => (
+                    <button
+                      key={i}
+                      onClick={() => addItem(suggestion)}
+                      className="w-full px-4 py-2 text-left hover:bg-green-50 text-gray-700 first:rounded-t-xl last:rounded-b-xl flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4 text-green-500" />
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {manualItems.length > 0 && (
-          <Card className="mb-6">
-            <CardHeader><CardTitle>Added Items</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              {manualItems.map((item) => (
-                <div key={item.id} className={`flex items-center gap-3 p-3 rounded-xl ${checkedItems.has(item.name) ? 'bg-green-50' : 'bg-gray-50'}`}>
-                  <Checkbox checked={checkedItems.has(item.name)} onCheckedChange={(checked) => {
-                    const newChecked = new Set(checkedItems);
-                    checked ? newChecked.add(item.name) : newChecked.delete(item.name);
-                    setCheckedItems(newChecked);
-                  }} />
-                  <span className={`flex-1 ${checkedItems.has(item.name) ? 'line-through text-gray-400' : 'text-gray-800'}`}>{item.name}</span>
-                  <Button size="icon" variant="ghost" onClick={() => setManualItems(manualItems.filter(i => i.id !== item.id))} className="text-red-500"><Trash2 className="w-4 h-4" /></Button>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
+        {/* Items grouped by source (recipe name) */}
+        {Object.entries(groupedItems).map(([source, items]) => {
+          const isRecipeSource = source !== 'manual' && source !== 'Added' && source !== 'Meal Plan';
+          const SourceIcon = isRecipeSource ? ChefHat : (source === 'Meal Plan' ? ShoppingCart : ShoppingBag);
 
-        {Object.entries(categorizedIngredients).filter(([_, items]) => items.length > 0).map(([category, items]) => {
-          const CategoryIcon = CATEGORY_ICONS[category] || ShoppingBag;
           return (
-            <Card key={category} className="mb-6">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CategoryIcon className={`w-5 h-5 ${category === 'Produce' ? 'text-green-600' : category === 'Meat & Seafood' ? 'text-red-600' : category === 'Dairy & Eggs' ? 'text-blue-600' : category === 'Pantry' ? 'text-amber-600' : 'text-gray-600'}`} />
-                  <span>{category}</span>
+            <Card key={source} className="mb-6">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <SourceIcon className={`w-5 h-5 ${isRecipeSource ? 'text-amber-600' : source === 'Meal Plan' ? 'text-green-600' : 'text-gray-500'}`} />
+                  <span>{source === 'manual' ? 'Added Items' : source}</span>
                   <span className="text-sm font-normal text-gray-500">({items.length})</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-              {items.map((ing, i) => (
-                <div key={i} className={`flex items-center gap-3 p-3 rounded-xl ${checkedItems.has(ing.name) ? 'bg-green-50' : 'bg-gray-50'}`}>
-                  <Checkbox checked={checkedItems.has(ing.name)} onCheckedChange={(checked) => {
-                    const newChecked = new Set(checkedItems);
-                    checked ? newChecked.add(ing.name) : newChecked.delete(ing.name);
-                    setCheckedItems(newChecked);
-                  }} />
-                  <div className="flex-1">
-                    <p className={`font-medium ${checkedItems.has(ing.name) ? 'line-through text-gray-400' : 'text-gray-800'}`}>
-                      {ing.amount.toFixed(1)} {ing.unit} {ing.name}
-                    </p>
-                    <p className="text-xs text-gray-500">For: {ing.recipes.join(', ')}</p>
+                {items.map((item) => (
+                  <div key={item.id} className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${item.checked ? 'bg-green-50' : 'bg-gray-50'}`}>
+                    <Checkbox
+                      checked={item.checked}
+                      onCheckedChange={() => toggleItemCheck(item)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-medium ${item.checked ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                        {item.amount ? `${item.amount.toFixed(1)} ${item.unit || ''} `.trim() : ''}{item.name}
+                      </p>
+                      {item.sources && item.sources.length > 1 && (
+                        <p className="text-xs text-gray-500 truncate">Also in: {item.sources.filter(s => s !== source).join(', ')}</p>
+                      )}
+                    </div>
+                    {item.totalPrice > 0 && (
+                      <span className="text-green-600 font-semibold text-sm">${item.totalPrice.toFixed(2)}</span>
+                    )}
+                    {!item.id?.startsWith('meal_') && (
+                      <Button size="icon" variant="ghost" onClick={() => removeItem(item)} className="text-gray-400 hover:text-red-500 h-8 w-8">
+                        <X className="w-4 h-4" />
+                      </Button>
+                    )}
                   </div>
-                  <span className="text-green-600 font-semibold">${ing.totalPrice.toFixed(2)}</span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        );
+                ))}
+              </CardContent>
+            </Card>
+          );
         })}
+
+        {/* Categorized view for meal plan items */}
+        {aggregatedIngredients.length > 0 && Object.entries(categorizedIngredients).filter(([_, items]) => items.length > 0).length > 0 && (
+          <details className="mb-6">
+            <summary className="cursor-pointer text-sm text-gray-500 mb-3 hover:text-gray-700">
+              View by grocery category
+            </summary>
+            {Object.entries(categorizedIngredients).filter(([_, items]) => items.length > 0).map(([category, items]) => {
+              const CategoryIcon = CATEGORY_ICONS[category] || ShoppingBag;
+              return (
+                <Card key={category} className="mb-4">
+                  <CardHeader className="py-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <CategoryIcon className={`w-4 h-4 ${category === 'Produce' ? 'text-green-600' : category === 'Meat & Seafood' ? 'text-red-600' : category === 'Dairy & Eggs' ? 'text-blue-600' : category === 'Pantry' ? 'text-amber-600' : 'text-gray-600'}`} />
+                      <span>{category}</span>
+                      <span className="text-sm font-normal text-gray-500">({items.length})</span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0 space-y-1">
+                    {items.map((ing, i) => {
+                      const isChecked = combinedItems.find(item => item.name.toLowerCase() === ing.name.toLowerCase())?.checked;
+                      return (
+                        <div key={i} className={`flex items-center gap-2 p-2 rounded-lg text-sm ${isChecked ? 'bg-green-50 text-gray-400' : 'bg-gray-50'}`}>
+                          <span className={isChecked ? 'line-through' : ''}>
+                            {ing.amount.toFixed(1)} {ing.unit} {ing.name}
+                          </span>
+                          {ing.totalPrice > 0 && (
+                            <span className="ml-auto text-green-600">${ing.totalPrice.toFixed(2)}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </details>
+        )}
 
         <Card className="bg-white shadow-lg border-2 border-green-500">
           <CardContent className="p-6">

@@ -1,10 +1,49 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Clock, Users, DollarSign, Heart, Leaf, Package } from 'lucide-react';
+import { Clock, Users, DollarSign, Heart, Leaf, Package, ShoppingCart, Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { shoppingListStorage } from '@/utils/shoppingListStorage';
+import { useToast } from '@/components/ui/use-toast';
 
 export default function RecipeCard({ recipe, onSave, isSaved, onClick, householdSize = 4, pantryItems = [] }) {
+  const { toast } = useToast();
+  const [isInList, setIsInList] = useState(false);
+  const [justAdded, setJustAdded] = useState(false);
+
+  // Check if recipe is in shopping list
+  useEffect(() => {
+    if (recipe?.title) {
+      setIsInList(shoppingListStorage.hasRecipeItems(recipe.title));
+    }
+  }, [recipe]);
+
+  const addToShoppingList = (e) => {
+    e.stopPropagation();
+    if (!recipe?.ingredients) {
+      toast({ title: "No ingredients", description: "This recipe has no ingredients to add" });
+      return;
+    }
+
+    const scale = householdSize / (recipe.servings || 4);
+    const ingredients = recipe.ingredients
+      .filter(ing => !pantryItems?.some(p => ing.name.toLowerCase().includes(p.toLowerCase())))
+      .map(ing => ({
+        name: ing.name,
+        quantity: (ing.amount || 1) * scale,
+        unit: ing.unit || ''
+      }));
+
+    const count = shoppingListStorage.addRecipeItems(recipe, ingredients);
+    setIsInList(true);
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 2000);
+    toast({
+      title: "Added to shopping list!",
+      description: `${count} item${count !== 1 ? 's' : ''} from ${recipe.title}`
+    });
+  };
+
   // Calculate cost with pantry deductions
   const { scaledCost, originalCost, hasPantryDeduction } = useMemo(() => {
     const scale = householdSize / (recipe.servings || 4);
@@ -46,19 +85,34 @@ export default function RecipeCard({ recipe, onSave, isSaved, onClick, household
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
         
-        {/* Save Button */}
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={(e) => {
-            e.stopPropagation();
-            onSave?.(recipe);
-          }}
-          className={`absolute top-3 right-3 w-10 h-10 rounded-full backdrop-blur-sm transition-all
-            ${isSaved ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-white/80 text-gray-600 hover:bg-white'}`}
-        >
-          <Heart className={`w-5 h-5 ${isSaved ? 'fill-current' : ''}`} />
-        </Button>
+        {/* Action Buttons */}
+        <div className="absolute top-3 right-3 flex gap-2">
+          {/* Add to Shopping List Button */}
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={addToShoppingList}
+            className={`w-10 h-10 rounded-full backdrop-blur-sm transition-all
+              ${justAdded ? 'bg-green-500 text-white' : isInList ? 'bg-green-100 text-green-600 hover:bg-green-200' : 'bg-white/80 text-gray-600 hover:bg-white'}`}
+            title={isInList ? 'In shopping list' : 'Add to shopping list'}
+          >
+            {justAdded ? <Check className="w-5 h-5" /> : <ShoppingCart className={`w-5 h-5 ${isInList ? 'fill-green-100' : ''}`} />}
+          </Button>
+
+          {/* Save Button */}
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSave?.(recipe);
+            }}
+            className={`w-10 h-10 rounded-full backdrop-blur-sm transition-all
+              ${isSaved ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-white/80 text-gray-600 hover:bg-white'}`}
+          >
+            <Heart className={`w-5 h-5 ${isSaved ? 'fill-current' : ''}`} />
+          </Button>
+        </div>
 
         {/* Pantry Badge */}
         {hasPantryDeduction && (

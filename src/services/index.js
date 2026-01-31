@@ -1,5 +1,5 @@
 /**
- * BudgetBite Services
+ * DishDollar Services
  *
  * This module provides all the services needed for the app to function.
  * It works with Supabase when configured, or falls back to localStorage for demo mode.
@@ -19,7 +19,7 @@ import {
 import { supabase, isSupabaseConfigured } from '@/api/supabase';
 
 // Main app client - replaces base44
-export const budgetBite = {
+export const dishDollar = {
   auth,
   entities,
 
@@ -30,7 +30,7 @@ export const budgetBite = {
   appLogs: {
     logUserInApp: (pageName) => {
       // In demo mode, just log to console
-      console.log(`[BudgetBite] Page view: ${pageName}`);
+      console.log(`[DishDollar] Page view: ${pageName}`);
       return Promise.resolve();
     }
   },
@@ -41,7 +41,7 @@ export const budgetBite = {
       InvokeLLM: async (params) => {
         // This would integrate with Anthropic API in production
         // For now, return a mock response
-        console.log('[BudgetBite] LLM invocation requested:', params);
+        console.log('[DishDollar] LLM invocation requested:', params);
         return {
           success: false,
           message: 'LLM integration not configured. Please set up Anthropic API.'
@@ -66,4 +66,4 @@ export {
   isSupabaseConfigured
 };
 
-export default budgetBite;
+export default dishDollar;

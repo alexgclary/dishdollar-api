@@ -17,7 +17,7 @@ const getAppParamValue = (paramName, { defaultValue = undefined, removeFromUrl =
   if (isNode) {
     return defaultValue;
   }
-  const storageKey = `budgetbite_${toSnakeCase(paramName)}`;
+  const storageKey = `dishdollar_${toSnakeCase(paramName)}`;
   const urlParams = new URLSearchParams(window.location.search);
   const searchParam = urlParams.get(paramName);
   if (removeFromUrl) {

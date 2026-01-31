@@ -10,9 +10,9 @@ export const AuthProvider = ({ children }) => {
   const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [appPublicSettings, setAppPublicSettings] = useState({
-    id: 'budgetbite',
+    id: 'dishdollar',
     public_settings: {
-      app_name: 'BudgetBite',
+      app_name: 'DishDollar',
       demo_mode: !isSupabaseConfigured
     }
   });

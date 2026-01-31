@@ -3,11 +3,11 @@ import { supabase, isSupabaseConfigured } from '@/api/supabase';
 // Demo user for when Supabase is not configured
 const DEMO_USER = {
   id: 'demo-user',
-  email: 'demo@budgetbite.app',
+  email: 'demo@dishdollar.app',
   name: 'Demo User'
 };
 
-const STORAGE_KEY = 'budgetbite_auth';
+const STORAGE_KEY = 'dishdollar_auth';
 
 /**
  * Authentication service that works with Supabase or falls back to localStorage demo mode

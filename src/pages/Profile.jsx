@@ -74,7 +74,7 @@ export default function Profile() {
   const updateProfileMutation = useMutation({
     mutationFn: async () => {
       // Update in localStorage for demo mode
-      localStorage.setItem('budgetbite_profile', JSON.stringify(formData));
+      localStorage.setItem('dishdollar_profile', JSON.stringify(formData));
       return entities.UserProfile.update(profileId, formData);
     },
     onSuccess: () => {
@@ -99,8 +99,8 @@ export default function Profile() {
 
   const handleLogout = async () => {
     if (confirm('Are you sure you want to log out?')) {
-      localStorage.removeItem('budgetbite_profile');
-      localStorage.removeItem('budgetbite_auth');
+      localStorage.removeItem('dishdollar_profile');
+      localStorage.removeItem('dishdollar_auth');
       await auth.logout(window.location.origin);
     }
   };

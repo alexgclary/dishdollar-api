@@ -54,7 +54,7 @@
       "command": "npx",
       "args": ["@anthropic-ai/mcp-server-filesystem"],
       "env": {
-        "ALLOWED_DIRECTORIES": "/path/to/budgetbite"
+        "ALLOWED_DIRECTORIES": "/path/to/dishdollar"
       },
       "description": "Local file system access for project files"
     },

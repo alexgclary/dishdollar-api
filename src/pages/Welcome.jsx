@@ -17,7 +17,7 @@ export default function Welcome() {
     queryFn: async () => {
       try {
         // Check localStorage first for demo mode
-        const localProfile = localStorage.getItem('budgetbite_profile');
+        const localProfile = localStorage.getItem('dishdollar_profile');
         if (localProfile) {
           return JSON.parse(localProfile);
         }
@@ -111,7 +111,7 @@ export default function Welcome() {
 
             <h1 className="text-5xl md:text-6xl font-bold mb-4">
               <span className="bg-gradient-to-r from-green-600 to-emerald-500 bg-clip-text text-transparent">
-                BudgetBite
+                DishDollar
               </span>
             </h1>
             

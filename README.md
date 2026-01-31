@@ -1,4 +1,4 @@
-# BudgetBite
+# DishDollar
 
 A recipe and meal planning app that helps users discover healthy, affordable recipes and purchase ingredients at real-time prices from their preferred grocery stores.
 

@@ -14,6 +14,6 @@ export const supabase = isSupabaseConfigured
 
 // Log configuration status for debugging
 if (!isSupabaseConfigured) {
-  console.log('BudgetBite: Running in demo mode (Supabase not configured)');
+  console.log('DishDollar: Running in demo mode (Supabase not configured)');
   console.log('To enable full features, set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment');
 }

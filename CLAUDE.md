@@ -1,8 +1,8 @@
-# CLAUDE.md - BudgetBite Development Guide
+# CLAUDE.md - DishDollar Development Guide
 
 ## Project Overview
 
-**BudgetBite** is a recipe and meal planning app that helps users discover healthy, affordable recipes and purchase ingredients at real-time prices from their preferred grocery stores. The app bridges the gap between recipe discovery and practical grocery shopping by providing intelligent ingredient parsing, smart product matching, and direct store integration.
+**DishDollar** is a recipe and meal planning app that helps users discover healthy, affordable recipes and purchase ingredients at real-time prices from their preferred grocery stores. The app bridges the gap between recipe discovery and practical grocery shopping by providing intelligent ingredient parsing, smart product matching, and direct store integration.
 
 ### Core Value Proposition
 - Parse recipe URLs and extract ingredient lists with preserved measurements
@@ -98,7 +98,7 @@ POST /idp/v1/products/list      # Create shopping list
     }
   ],
   "landing_page_configuration": {
-    "partner_linkback_url": "https://budgetbite.app/recipe/123",
+    "partner_linkback_url": "https://dishdollar.com/recipe/123",
     "enable_pantry_items": true    // CRITICAL: Enables pantry exclusion
   }
 }
@@ -362,7 +362,7 @@ function findOptimalPackage(ingredient, availableProducts) {
 
 ## MCP Server Integration
 
-### Recommended MCP Servers for BudgetBite
+### Recommended MCP Servers for DishDollar
 
 #### 1. Puppeteer/Playwright (Recipe Scraping)
 **Purpose**: Automate recipe website scraping with browser rendering

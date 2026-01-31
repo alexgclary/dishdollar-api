@@ -3,8 +3,9 @@ import { auth, entities } from '@/services';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import { shoppingListStorage } from '@/utils/shoppingListStorage';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Clock, Users, DollarSign, Heart, Plus, Minus, ShoppingCart, ChefHat, Leaf, Calendar, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Clock, Users, DollarSign, Heart, Plus, Minus, ShoppingCart, ChefHat, Leaf, Calendar, Copy, Check, ListPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,7 +21,9 @@ export default function RecipeDetails() {
   const [userProfile, setUserProfile] = useState(null);
   const [showShoppingDialog, setShowShoppingDialog] = useState(false);
   const [copiedList, setCopiedList] = useState(false);
+  const [addedToList, setAddedToList] = useState(false);
   const [manualPantryItems, setManualPantryItems] = useState([]);
+  const [itemsInList, setItemsInList] = useState(false);
 
   const urlParams = new URLSearchParams(window.location.search);
   const recipeId = urlParams.get('id');
@@ -104,6 +107,13 @@ export default function RecipeDetails() {
     }
   }, [profileData]);
 
+  // Check if recipe items are already in shopping list
+  useEffect(() => {
+    if (recipe?.title) {
+      setItemsInList(shoppingListStorage.hasRecipeItems(recipe.title));
+    }
+  }, [recipe]);
+
   const isIngredientInPantry = (ing, index) => {
     // Check if manually toggled to pantry
     if (manualPantryItems.includes(index)) return true;
@@ -149,6 +159,24 @@ export default function RecipeDetails() {
     setCopiedList(true);
     setTimeout(() => setCopiedList(false), 2000);
     toast({ title: "Copied!", description: "Shopping list copied to clipboard" });
+  };
+
+  const addToShoppingList = () => {
+    const items = getShoppingItems();
+    const ingredients = items.map(item => ({
+      name: item.name,
+      quantity: parseFloat(item.scaledAmount),
+      unit: item.unit
+    }));
+
+    const count = shoppingListStorage.addRecipeItems(recipe, ingredients);
+    setAddedToList(true);
+    setItemsInList(true);
+    setTimeout(() => setAddedToList(false), 2000);
+    toast({
+      title: "Added to shopping list!",
+      description: `${count} item${count !== 1 ? 's' : ''} from ${recipe.title} added`
+    });
   };
 
   const isSaved = savedRecipes.some(sr => sr.recipe_id === recipe?.id);
@@ -298,8 +326,20 @@ export default function RecipeDetails() {
                     <Plus className="w-4 h-4 mr-2" />{addToBudgetMutation.isPending ? 'Adding...' : 'Add to Budget'}
                   </Button>
 
-                  <Button variant="outline" onClick={() => setShowShoppingDialog(true)} className="w-full rounded-full border-2 border-green-500 text-green-600 hover:bg-green-50">
-                    <ShoppingCart className="w-4 h-4 mr-2" />Shopping List
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowShoppingDialog(true)}
+                    className={`w-full rounded-full border-2 ${itemsInList ? 'border-green-300 text-green-500 bg-green-50' : 'border-green-500 text-green-600 hover:bg-green-50'}`}
+                  >
+                    {itemsInList ? (
+                      <>
+                        <Check className="w-4 h-4 mr-2" />In Shopping List
+                      </>
+                    ) : (
+                      <>
+                        <ListPlus className="w-4 h-4 mr-2" />Add to Shopping List
+                      </>
+                    )}
                   </Button>
 
                   <Button variant="outline" onClick={() => navigate(createPageUrl('MealPlanner'))} className="w-full rounded-full">
@@ -329,7 +369,11 @@ export default function RecipeDetails() {
       <Dialog open={showShoppingDialog} onOpenChange={setShowShoppingDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><ShoppingCart className="w-5 h-5" />Shopping List</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5" />
+              Shopping List
+              {itemsInList && <Badge className="bg-green-100 text-green-700 text-xs">Added</Badge>}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-gray-500">{shoppingItems.length} items needed (pantry items excluded)</p>
@@ -346,14 +390,23 @@ export default function RecipeDetails() {
               <span className="text-green-600">${shoppingItems.reduce((s, i) => s + i.scaledPrice, 0).toFixed(2)}</span>
             </div>
             <div className="flex gap-2">
-              <Button onClick={copyShoppingList} variant="outline" className="flex-1 rounded-full">
-                {copiedList ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
-                {copiedList ? 'Copied!' : 'Copy List'}
+              <Button onClick={addToShoppingList} className={`flex-1 rounded-full ${addedToList || itemsInList ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-green-500 hover:bg-green-600'}`}>
+                {addedToList ? (
+                  <><Check className="w-4 h-4 mr-2" />Added!</>
+                ) : itemsInList ? (
+                  <><ListPlus className="w-4 h-4 mr-2" />Add Again</>
+                ) : (
+                  <><ListPlus className="w-4 h-4 mr-2" />Add to List</>
+                )}
               </Button>
-              <Button onClick={() => { setShowShoppingDialog(false); navigate(createPageUrl('ShoppingList')); }} className="flex-1 rounded-full bg-green-500 hover:bg-green-600">
-                Full Shopping List
+              <Button onClick={() => { setShowShoppingDialog(false); navigate(createPageUrl('ShoppingList')); }} variant="outline" className="flex-1 rounded-full border-green-500 text-green-600 hover:bg-green-50">
+                View List
               </Button>
             </div>
+            <Button onClick={copyShoppingList} variant="ghost" className="w-full text-gray-500 hover:text-gray-700">
+              {copiedList ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
+              {copiedList ? 'Copied!' : 'Copy to clipboard'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

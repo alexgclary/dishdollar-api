@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { auth, entities } from '@/services';
 import { useNavigate } from 'react-router-dom';
@@ -7,16 +7,50 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
-import { ChevronRight, ChevronLeft, Sparkles, MapPin, Utensils, Salad, Users, Package, Bell, AlertCircle } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ChevronRight, ChevronLeft, Sparkles, MapPin, Utensils, Salad, Users, Package, Bell, AlertCircle, Loader2, Navigation, Store, Check } from 'lucide-react';
 import OnboardingProgress from '@/components/onboarding/OnboardingProgress';
 import PillSelector from '@/components/onboarding/PillSelector';
 import { FloatingVegetables, WavyBackground } from '@/components/ui/DecorativeElements';
+import { US_STATES } from '@/utils/usStates';
 
-const stores = [
-  'Walmart', 'Kroger', 'Whole Foods', 'Trader Joe\'s', 'Costco', 
-  'Safeway', 'Publix', 'Aldi', 'Target', 'HEB', 'Wegmans', 'Sprouts',
-  'Food Lion', 'Albertsons', 'Meijer', 'WinCo', 'Grocery Outlet', 'Other'
+// Store data with regions for smarter recommendations
+const storeData = [
+  { name: 'Walmart', nationwide: true },
+  { name: 'Kroger', regions: ['midwest', 'south', 'west'] },
+  { name: 'Whole Foods', nationwide: true },
+  { name: "Trader Joe's", nationwide: true },
+  { name: 'Costco', nationwide: true },
+  { name: 'Safeway', regions: ['west', 'mid-atlantic'] },
+  { name: 'Publix', regions: ['southeast'] },
+  { name: 'Aldi', regions: ['midwest', 'east', 'south'] },
+  { name: 'Target', nationwide: true },
+  { name: 'HEB', regions: ['texas'] },
+  { name: 'Wegmans', regions: ['northeast', 'mid-atlantic'] },
+  { name: 'Sprouts', regions: ['west', 'south', 'midwest'] },
+  { name: 'Food Lion', regions: ['southeast', 'mid-atlantic'] },
+  { name: 'Albertsons', regions: ['west'] },
+  { name: 'Meijer', regions: ['midwest'] },
+  { name: 'WinCo', regions: ['west'] },
+  { name: 'Grocery Outlet', regions: ['west'] },
+  { name: 'Other', nationwide: true }
 ];
+
+// Region mapping by state
+const stateRegions = {
+  'ME': 'northeast', 'NH': 'northeast', 'VT': 'northeast', 'MA': 'northeast', 'RI': 'northeast', 'CT': 'northeast',
+  'NY': 'northeast', 'NJ': 'mid-atlantic', 'PA': 'mid-atlantic', 'DE': 'mid-atlantic', 'MD': 'mid-atlantic', 'DC': 'mid-atlantic',
+  'VA': 'mid-atlantic', 'WV': 'mid-atlantic',
+  'NC': 'southeast', 'SC': 'southeast', 'GA': 'southeast', 'FL': 'southeast', 'AL': 'southeast', 'MS': 'southeast',
+  'TN': 'south', 'KY': 'south', 'LA': 'south', 'AR': 'south', 'OK': 'south',
+  'TX': 'texas',
+  'OH': 'midwest', 'IN': 'midwest', 'IL': 'midwest', 'MI': 'midwest', 'WI': 'midwest', 'MN': 'midwest',
+  'IA': 'midwest', 'MO': 'midwest', 'ND': 'midwest', 'SD': 'midwest', 'NE': 'midwest', 'KS': 'midwest',
+  'MT': 'west', 'WY': 'west', 'CO': 'west', 'NM': 'west', 'AZ': 'west', 'UT': 'west', 'NV': 'west', 'ID': 'west',
+  'WA': 'west', 'OR': 'west', 'CA': 'west', 'AK': 'west', 'HI': 'west'
+};
+
+const stores = storeData.map(s => s.name);
 
 const cuisines = [
   { value: 'Italian', icon: '🍝' }, { value: 'Mexican', icon: '🌮' },
@@ -53,6 +87,9 @@ export default function Onboarding() {
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [isLocating, setIsLocating] = useState(false);
+  const [isLookingUpZip, setIsLookingUpZip] = useState(false);
+  const [userCoordinates, setUserCoordinates] = useState(null);
   const [formData, setFormData] = useState({
     full_name: '',
     date_of_birth: '',
@@ -103,6 +140,116 @@ export default function Onboarding() {
     return Object.keys(newErrors).length === 0;
   };
 
+  // Look up city/state from ZIP code using free API
+  const lookupZipCode = async (zip) => {
+    if (zip.length !== 5) return;
+    setIsLookingUpZip(true);
+    try {
+      const response = await fetch(`https://api.zippopotam.us/us/${zip}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.places && data.places[0]) {
+          const place = data.places[0];
+          updateForm('location', {
+            ...formData.location,
+            city: place['place name'],
+            state: place['state abbreviation'],
+            zip_code: zip
+          });
+          toast({ title: "Location found!", description: `${place['place name']}, ${place['state abbreviation']}` });
+        }
+      }
+    } catch (error) {
+      console.error('ZIP lookup failed:', error);
+    } finally {
+      setIsLookingUpZip(false);
+    }
+  };
+
+  // Get user's current location via browser geolocation
+  const handleEnableLocation = async () => {
+    if (!navigator.geolocation) {
+      toast({ title: "Not supported", description: "Geolocation is not supported by your browser", variant: "destructive" });
+      return;
+    }
+
+    setIsLocating(true);
+    try {
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000
+        });
+      });
+
+      const { latitude, longitude } = position.coords;
+      setUserCoordinates({ lat: latitude, lng: longitude });
+
+      // Reverse geocode using Nominatim (free, no API key)
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`,
+        { headers: { 'User-Agent': 'DishDollar/1.0' } }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const address = data.address;
+
+        // Extract city (try multiple fields)
+        const city = address.city || address.town || address.village || address.suburb || '';
+        const state = address.state || '';
+        const zip = address.postcode || '';
+
+        // Find state abbreviation
+        const stateObj = US_STATES.find(s =>
+          s.label.toLowerCase() === state.toLowerCase() ||
+          s.value.toLowerCase() === state.toLowerCase()
+        );
+        const stateAbbrev = stateObj?.value || state.substring(0, 2).toUpperCase();
+
+        updateForm('location', {
+          city,
+          state: stateAbbrev,
+          zip_code: zip.substring(0, 5)
+        });
+
+        toast({ title: "Location detected!", description: `${city}, ${stateAbbrev}` });
+      }
+    } catch (error) {
+      console.error('Geolocation error:', error);
+      toast({
+        title: "Location unavailable",
+        description: error.code === 1 ? "Permission denied. Please enable location access." : "Could not determine your location.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLocating(false);
+    }
+  };
+
+  // Get stores sorted by relevance to user's region
+  const getSortedStores = useCallback(() => {
+    const userState = formData.location.state?.toUpperCase();
+    const userRegion = stateRegions[userState];
+
+    if (!userRegion) return stores;
+
+    // Sort stores: regional first, then nationwide, then others
+    return [...storeData].sort((a, b) => {
+      const aInRegion = a.regions?.includes(userRegion);
+      const bInRegion = b.regions?.includes(userRegion);
+      const aNationwide = a.nationwide;
+      const bNationwide = b.nationwide;
+
+      if (aInRegion && !bInRegion) return -1;
+      if (!aInRegion && bInRegion) return 1;
+      if (aNationwide && !bNationwide && !bInRegion) return -1;
+      if (!aNationwide && bNationwide && !aInRegion) return 1;
+      return 0;
+    }).map(s => s.name);
+  }, [formData.location.state]);
+
   const handleNext = () => {
     if (validateStep(step)) {
       setStep(s => s + 1);
@@ -133,10 +280,10 @@ export default function Onboarding() {
       await entities.UserProfile.create(profileData);
 
       // Also save to localStorage for immediate access
-      localStorage.setItem('budgetbite_profile', JSON.stringify(profileData));
+      localStorage.setItem('dishdollar_profile', JSON.stringify(profileData));
 
       toast({
-        title: "Welcome to BudgetBite!",
+        title: "Welcome to DishDollar!",
         description: "Your profile has been set up successfully",
       });
 
@@ -145,7 +292,7 @@ export default function Onboarding() {
     } catch (error) {
       console.error('Error in onboarding:', error);
       // Even on error, save to localStorage and navigate
-      localStorage.setItem('budgetbite_profile', JSON.stringify({
+      localStorage.setItem('dishdollar_profile', JSON.stringify({
         ...formData,
         user_id: 'demo-user',
         onboarding_completed: true,
@@ -153,7 +300,7 @@ export default function Onboarding() {
       }));
 
       toast({
-        title: "Welcome to BudgetBite!",
+        title: "Welcome to DishDollar!",
         description: "Your profile has been set up successfully",
       });
 
@@ -225,36 +372,54 @@ export default function Onboarding() {
               <p className="text-gray-500 mt-2">We'll use this for accurate pricing</p>
             </div>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>City</Label>
-                  <Input
-                    value={formData.location.city}
-                    onChange={(e) => updateForm('location', { ...formData.location, city: e.target.value })}
-                    className="mt-1 rounded-xl border-2"
-                    placeholder="San Francisco"
-                  />
-                </div>
-                <div>
-                  <Label>State</Label>
-                  <Input
-                    value={formData.location.state}
-                    onChange={(e) => updateForm('location', { ...formData.location, state: e.target.value })}
-                    className="mt-1 rounded-xl border-2"
-                    placeholder="CA"
-                    maxLength={2}
-                  />
-                </div>
+              {/* Geolocation Button */}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleEnableLocation}
+                disabled={isLocating}
+                className="w-full rounded-xl border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50"
+              >
+                {isLocating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Detecting location...
+                  </>
+                ) : (
+                  <>
+                    <Navigation className="w-4 h-4 mr-2" />
+                    Use My Location
+                  </>
+                )}
+              </Button>
+
+              <div className="relative flex items-center">
+                <div className="flex-grow border-t border-gray-200"></div>
+                <span className="flex-shrink mx-4 text-gray-400 text-sm">or enter manually</span>
+                <div className="flex-grow border-t border-gray-200"></div>
               </div>
+
+              {/* ZIP Code with auto-fill */}
               <div>
                 <Label>ZIP Code *</Label>
-                <Input
-                  value={formData.location.zip_code}
-                  onChange={(e) => updateForm('location', { ...formData.location, zip_code: e.target.value })}
-                  className={`mt-1 rounded-xl border-2 ${errors.zip_code ? 'border-red-400' : ''}`}
-                  placeholder="94102"
-                  maxLength={5}
-                />
+                <div className="relative">
+                  <Input
+                    value={formData.location.zip_code}
+                    onChange={(e) => {
+                      const zip = e.target.value.replace(/\D/g, '').slice(0, 5);
+                      updateForm('location', { ...formData.location, zip_code: zip });
+                      if (zip.length === 5) {
+                        lookupZipCode(zip);
+                      }
+                    }}
+                    className={`mt-1 rounded-xl border-2 ${errors.zip_code ? 'border-red-400' : ''}`}
+                    placeholder="Enter ZIP to auto-fill city & state"
+                    maxLength={5}
+                  />
+                  {isLookingUpZip && (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-gray-400" />
+                  )}
+                </div>
                 {errors.zip_code && (
                   <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
                     <AlertCircle className="w-4 h-4" />
@@ -262,21 +427,70 @@ export default function Onboarding() {
                   </p>
                 )}
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>City</Label>
+                  <Input
+                    value={formData.location.city}
+                    onChange={(e) => updateForm('location', { ...formData.location, city: e.target.value })}
+                    className="mt-1 rounded-xl border-2"
+                    placeholder="City"
+                  />
+                </div>
+                <div>
+                  <Label>State</Label>
+                  <Select
+                    value={formData.location.state}
+                    onValueChange={(value) => updateForm('location', { ...formData.location, state: value })}
+                  >
+                    <SelectTrigger className="mt-1 rounded-xl border-2">
+                      <SelectValue placeholder="Select state" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {US_STATES.map((state) => (
+                        <SelectItem key={state.value} value={state.value}>
+                          {state.value} - {state.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               <div>
-                <Label>Preferred Store *</Label>
+                <Label className="flex items-center gap-2">
+                  <Store className="w-4 h-4" />
+                  Preferred Store *
+                </Label>
+                {formData.location.state && (
+                  <p className="text-xs text-green-600 mb-2">Showing stores popular in your area first</p>
+                )}
                 <div className="grid grid-cols-3 gap-2 mt-2 max-h-48 overflow-y-auto">
-                  {stores.map((store) => (
-                    <button
-                      key={store}
-                      onClick={() => updateForm('preferred_store', store)}
-                      className={`px-3 py-2 rounded-xl text-sm font-medium transition-all border-2
-                        ${formData.preferred_store === store 
-                          ? 'border-green-500 bg-green-50 text-green-700' 
-                          : 'border-gray-200 hover:border-green-300'}`}
-                    >
-                      {store}
-                    </button>
-                  ))}
+                  {getSortedStores().map((store) => {
+                    const storeInfo = storeData.find(s => s.name === store);
+                    const userRegion = stateRegions[formData.location.state?.toUpperCase()];
+                    const isRegional = storeInfo?.regions?.includes(userRegion);
+
+                    return (
+                      <button
+                        key={store}
+                        onClick={() => updateForm('preferred_store', store)}
+                        className={`px-3 py-2 rounded-xl text-sm font-medium transition-all border-2 relative
+                          ${formData.preferred_store === store
+                            ? 'border-green-500 bg-green-50 text-green-700'
+                            : 'border-gray-200 hover:border-green-300'}`}
+                      >
+                        {store}
+                        {isRegional && formData.preferred_store !== store && (
+                          <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-400 rounded-full" title="Popular in your area" />
+                        )}
+                        {formData.preferred_store === store && (
+                          <Check className="absolute -top-1 -right-1 w-4 h-4 text-green-600" />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
                 {errors.preferred_store && (
                   <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
@@ -530,7 +744,7 @@ export default function Onboarding() {
       <div className="relative z-10 max-w-xl mx-auto px-6 py-8">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-500 bg-clip-text text-transparent">
-            🥗 BudgetBite
+            🍽️ DishDollar
           </h1>
         </div>
 
