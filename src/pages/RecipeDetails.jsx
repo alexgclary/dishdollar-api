@@ -5,12 +5,13 @@ import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { shoppingListStorage } from '@/utils/shoppingListStorage';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Clock, Users, DollarSign, Heart, Plus, Minus, ShoppingCart, ChefHat, Leaf, Calendar, Copy, Check, ListPlus } from 'lucide-react';
+import { ArrowLeft, Clock, Users, DollarSign, Heart, Plus, Minus, ShoppingCart, ChefHat, Leaf, Calendar, Copy, Check, ListPlus, RefreshCw, Zap, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { hasRealTimePricing } from '@/components/utils/pricingDatabase';
 
 export default function RecipeDetails() {
   const navigate = useNavigate();
@@ -24,6 +25,8 @@ export default function RecipeDetails() {
   const [addedToList, setAddedToList] = useState(false);
   const [manualPantryItems, setManualPantryItems] = useState([]);
   const [itemsInList, setItemsInList] = useState(false);
+  const [livePrices, setLivePrices] = useState({});
+  const [isPricingLoading, setIsPricingLoading] = useState(false);
 
   const urlParams = new URLSearchParams(window.location.search);
   const recipeId = urlParams.get('id');
@@ -45,6 +48,59 @@ export default function RecipeDetails() {
       return profiles[0];
     }
   });
+
+  // Check if user's store supports real-time pricing
+  const supportsLivePricing = hasRealTimePricing(profileData?.preferred_store);
+
+  // Fetch live prices from Kroger API
+  const fetchLivePrices = async () => {
+    if (!recipe?.ingredients?.length || !supportsLivePricing) return;
+
+    setIsPricingLoading(true);
+    try {
+      const API_BASE = 'https://budgetbite-api-69cb51842c10.herokuapp.com';
+      const response = await fetch(`${API_BASE}/api/prices/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ingredients: recipe.ingredients.map(i => ({
+            name: i.name,
+            amount: i.amount,
+            unit: i.unit
+          })),
+          zipCode: profileData?.location?.zip_code || '10001'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.items) {
+          const priceMap = {};
+          data.items.forEach(item => {
+            priceMap[item.ingredient?.toLowerCase() || item.name?.toLowerCase()] = {
+              price: item.price,
+              product: item.productName,
+              source: 'kroger'
+            };
+          });
+          setLivePrices(priceMap);
+          toast({
+            title: "Prices Updated!",
+            description: `Live prices from ${profileData?.preferred_store || 'Kroger'}`
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch live prices:', error);
+      toast({
+        title: "Pricing Unavailable",
+        description: "Using estimated prices",
+        variant: "destructive"
+      });
+    } finally {
+      setIsPricingLoading(false);
+    }
+  };
 
   const { data: savedRecipes = [] } = useQuery({
     queryKey: ['savedRecipes'],
@@ -127,17 +183,28 @@ export default function RecipeDetails() {
     );
   };
 
+  const getIngredientPrice = (ing) => {
+    // Check for live price first
+    const livePrice = livePrices[ing.name?.toLowerCase()];
+    if (livePrice) {
+      return livePrice.price;
+    }
+    return ing.estimated_price || 2.50;
+  };
+
   const calculateTotalCost = () => {
     if (!recipe) return 0;
     const scale = servings / recipe.servings;
     let total = 0;
     recipe.ingredients?.forEach((ing, index) => {
       if (!isIngredientInPantry(ing, index)) {
-        total += (ing.estimated_price || 0) * scale;
+        total += getIngredientPrice(ing) * scale;
       }
     });
     return Math.max(total, 0);
   };
+
+  const hasLivePrices = Object.keys(livePrices).length > 0;
 
   const getShoppingItems = () => {
     if (!recipe?.ingredients) return [];
@@ -282,8 +349,15 @@ export default function RecipeDetails() {
                           </div>
                           <span className={isInPantry ? 'text-green-800 font-medium' : 'text-gray-800'}>{(ing.amount * scale).toFixed(1)} {ing.unit} {ing.name}</span>
                         </div>
-                        <span className={`text-sm font-semibold ${isInPantry ? 'text-green-600' : 'text-gray-600'}`}>
-                          {isInPantry ? 'In pantry' : `$${((ing.estimated_price || 0) * scale).toFixed(2)}`}
+                        <span className={`text-sm font-semibold ${isInPantry ? 'text-green-600' : livePrices[ing.name?.toLowerCase()] ? 'text-blue-600' : 'text-gray-600'}`}>
+                          {isInPantry ? 'In pantry' : (
+                            <span className="flex items-center gap-1">
+                              ${(getIngredientPrice(ing) * scale).toFixed(2)}
+                              {livePrices[ing.name?.toLowerCase()] && (
+                                <Zap className="w-3 h-3 text-blue-500" />
+                              )}
+                            </span>
+                          )}
                         </span>
                       </motion.div>
                     );
@@ -314,12 +388,45 @@ export default function RecipeDetails() {
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm"><span className="text-gray-600">Total cost</span><span className="font-semibold text-gray-800">${totalCost.toFixed(2)}</span></div>
                   <div className="flex justify-between text-sm"><span className="text-gray-600">Per serving</span><span className="font-semibold text-gray-800">${(totalCost / servings).toFixed(2)}</span></div>
+
+                  {/* Pricing Source Indicator */}
+                  <div className="pt-2 border-t border-gray-100">
+                    {hasLivePrices ? (
+                      <p className="text-xs text-blue-600 flex items-center gap-1">
+                        <Zap className="w-3 h-3" />
+                        Live prices from {profileData?.preferred_store || 'Kroger'}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-500 flex items-center gap-1">
+                        <Store className="w-3 h-3" />
+                        Estimated prices
+                      </p>
+                    )}
+                  </div>
+
                   {userProfile?.pantry_items?.length > 0 && (
                     <div className="pt-2 border-t border-gray-100">
                       <p className="text-xs text-green-600 flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full"></span>Pantry items deducted</p>
                     </div>
                   )}
                 </div>
+
+                {/* Live Pricing Button */}
+                {supportsLivePricing && (
+                  <Button
+                    onClick={fetchLivePrices}
+                    disabled={isPricingLoading}
+                    variant="outline"
+                    className="w-full rounded-full border-blue-300 text-blue-600 hover:bg-blue-50"
+                  >
+                    {isPricingLoading ? (
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Zap className="w-4 h-4 mr-2" />
+                    )}
+                    {hasLivePrices ? 'Refresh Live Prices' : 'Get Live Prices'}
+                  </Button>
+                )}
 
                 <div className="space-y-2 pt-4">
                   <Button onClick={() => addToBudgetMutation.mutate()} disabled={addToBudgetMutation.isPending} className="w-full rounded-full bg-green-500 hover:bg-green-600">

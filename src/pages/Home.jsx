@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/use-toast';
 import RecipeCard from '@/components/recipes/RecipeCard';
 import RecipeFilters from '@/components/recipes/RecipeFilters';
 import BudgetTracker from '@/components/budget/BudgetTracker';
+import { getPersonalizedRecipes } from '@/services/recipeDiscovery';
 
 // Sample recipes to seed when none exist
 const sampleRecipes = [
@@ -608,21 +609,54 @@ export default function Home() {
     }
   }, [recipesLoading, recipes.length]);
 
-  // Handle refresh
+  // Handle refresh - fetch new recipes from discovery service
+  const [isDiscovering, setIsDiscovering] = useState(false);
+
   const handleRefresh = async () => {
+    setIsDiscovering(true);
     try {
+      // First refetch existing recipes
       await refetchRecipes();
-      toast({
-        title: "Recipes Refreshed!",
-        description: "Showing latest recipes"
-      });
+
+      // Then try to discover new recipes based on user preferences
+      const newRecipes = await getPersonalizedRecipes(profileData, 3);
+
+      if (newRecipes && newRecipes.length > 0) {
+        // Add discovered recipes to the database
+        for (const recipe of newRecipes) {
+          // Check if recipe already exists (by title)
+          const existing = recipes.find(r =>
+            r.title?.toLowerCase() === recipe.title?.toLowerCase()
+          );
+          if (!existing) {
+            await entities.Recipe.create({
+              ...recipe,
+              id: `recipe-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+            });
+          }
+        }
+
+        // Refetch to show new recipes
+        await refetchRecipes();
+
+        toast({
+          title: "New Recipes Found!",
+          description: `Added ${newRecipes.length} fresh recipes`
+        });
+      } else {
+        toast({
+          title: "Recipes Refreshed!",
+          description: "Showing latest recipes"
+        });
+      }
     } catch (error) {
       console.error('Refresh error:', error);
       toast({
-        title: "Refresh Failed",
-        description: "Please try again",
-        variant: "destructive"
+        title: "Refresh Complete",
+        description: "Showing cached recipes"
       });
+    } finally {
+      setIsDiscovering(false);
     }
   };
 
@@ -853,11 +887,11 @@ export default function Home() {
           <Button
             variant="outline"
             onClick={handleRefresh}
-            disabled={isRefetching || seedRecipesMutation.isPending}
+            disabled={isRefetching || isDiscovering || seedRecipesMutation.isPending}
             className="rounded-full"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isRefetching ? 'animate-spin' : ''}`} />
-            Refresh
+            <RefreshCw className={`w-4 h-4 mr-2 ${isRefetching || isDiscovering ? 'animate-spin' : ''}`} />
+            {isDiscovering ? 'Finding recipes...' : 'Refresh'}
           </Button>
 
           {activeFiltersCount > 0 && (

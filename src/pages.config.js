@@ -1,4 +1,5 @@
 import AddRecipe from './pages/AddRecipe';
+import Admin from './pages/Admin';
 import Budget from './pages/Budget';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -14,6 +15,7 @@ import __Layout from './Layout.jsx';
 
 export const PAGES = {
     "AddRecipe": AddRecipe,
+    "Admin": Admin,
     "Budget": Budget,
     "Home": Home,
     "Login": Login,

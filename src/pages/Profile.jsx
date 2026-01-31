@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { motion } from 'framer-motion';
-import { ArrowLeft, User, MapPin, Utensils, Salad, DollarSign, Package, Bell, Save, LogOut } from 'lucide-react';
+import { ArrowLeft, User, MapPin, Utensils, Salad, DollarSign, Package, Bell, Save, LogOut, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -142,14 +142,24 @@ export default function Profile() {
                 </p>
               </div>
             </div>
-            <Button
-              onClick={handleLogout}
-              variant="ghost"
-              className="rounded-full bg-white/20 hover:bg-white/30 text-white"
-            >
-              <LogOut className="w-5 h-5 mr-2" />
-              Logout
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => navigate(createPageUrl('Admin'))}
+                variant="ghost"
+                className="rounded-full bg-white/20 hover:bg-white/30 text-white"
+              >
+                <Shield className="w-5 h-5 mr-2" />
+                Admin
+              </Button>
+              <Button
+                onClick={handleLogout}
+                variant="ghost"
+                className="rounded-full bg-white/20 hover:bg-white/30 text-white"
+              >
+                <LogOut className="w-5 h-5 mr-2" />
+                Logout
+              </Button>
+            </div>
           </div>
         </div>
       </div>

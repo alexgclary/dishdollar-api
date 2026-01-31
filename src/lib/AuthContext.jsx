@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { auth, isSupabaseConfigured } from '@/services';
+import { auth, isSupabaseConfigured, supabase } from '@/services';
 
 const AuthContext = createContext();
 
@@ -19,6 +19,24 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     checkAppState();
+
+    // Set up auth state listener for OAuth callbacks
+    if (isSupabaseConfigured && supabase) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          if (event === 'SIGNED_IN' && session?.user) {
+            setUser(session.user);
+            setIsAuthenticated(true);
+            setIsLoadingAuth(false);
+          } else if (event === 'SIGNED_OUT') {
+            setUser(null);
+            setIsAuthenticated(false);
+          }
+        }
+      );
+
+      return () => subscription.unsubscribe();
+    }
   }, []);
 
   const checkAppState = async () => {
