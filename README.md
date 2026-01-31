@@ -77,3 +77,4 @@ git push heroku main
 - Pantry management
 - Multiple dietary preferences support
 
+ 
