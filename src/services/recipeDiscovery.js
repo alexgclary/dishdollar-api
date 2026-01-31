@@ -27,25 +27,61 @@ const CURATED_RECIPE_URLS = {
     'https://www.budgetbytes.com/black-bean-quesadillas/',
     'https://www.budgetbytes.com/greek-turkey-and-rice-skillet/',
     'https://www.budgetbytes.com/easy-pad-thai/',
+    'https://www.budgetbytes.com/honey-sriracha-chicken/',
+    'https://www.budgetbytes.com/beef-cabbage-stir-fry/',
+    'https://www.budgetbytes.com/creamy-spinach-tomato-pasta/',
+    'https://www.budgetbytes.com/slow-cooker-salsa-chicken/',
+    'https://www.budgetbytes.com/sesame-noodles/',
   ],
   healthy: [
     'https://www.skinnytaste.com/air-fryer-salmon/',
     'https://www.skinnytaste.com/greek-chicken-sheet-pan-dinner/',
     'https://www.skinnytaste.com/cauliflower-fried-rice/',
+    'https://www.skinnytaste.com/grilled-lemon-herb-chicken/',
+    'https://www.skinnytaste.com/turkey-taco-lettuce-wraps/',
+    'https://www.skinnytaste.com/shrimp-and-broccoli-stir-fry/',
+    'https://www.skinnytaste.com/baked-chicken-parmesan/',
+    'https://www.skinnytaste.com/zucchini-noodles-with-turkey/',
   ],
   comfort: [
     'https://natashaskitchen.com/perfect-beef-stroganoff-recipe/',
     'https://natashaskitchen.com/chicken-alfredo-pasta/',
     'https://natashaskitchen.com/easy-chicken-stir-fry/',
+    'https://natashaskitchen.com/baked-mac-and-cheese/',
+    'https://natashaskitchen.com/chicken-pot-pie/',
+    'https://natashaskitchen.com/meatball-recipe/',
+    'https://natashaskitchen.com/lasagna-recipe/',
+    'https://natashaskitchen.com/beef-tacos/',
   ],
   creative: [
     'https://www.halfbakedharvest.com/sheet-pan-honey-garlic-salmon/',
     'https://www.halfbakedharvest.com/creamy-tuscan-chicken/',
+    'https://www.halfbakedharvest.com/korean-bbq-tacos/',
+    'https://www.halfbakedharvest.com/one-pot-lemon-chicken/',
+    'https://www.halfbakedharvest.com/thai-peanut-chicken/',
+    'https://www.halfbakedharvest.com/crispy-sesame-chicken/',
+    'https://www.halfbakedharvest.com/butter-chicken/',
+    'https://www.halfbakedharvest.com/mediterranean-chicken/',
   ],
   vegan: [
     'https://minimalistbaker.com/easy-vegan-fried-rice/',
     'https://minimalistbaker.com/1-pot-golden-curry-lentil-soup/',
     'https://minimalistbaker.com/crispy-baked-falafel/',
+    'https://minimalistbaker.com/vegan-black-bean-tacos/',
+    'https://minimalistbaker.com/thai-peanut-noodles/',
+    'https://minimalistbaker.com/easy-vegetable-stir-fry/',
+    'https://minimalistbaker.com/chickpea-curry/',
+    'https://minimalistbaker.com/mediterranean-bowl/',
+  ],
+  vegetarian: [
+    'https://cookieandkate.com/best-vegetable-lasagna/',
+    'https://cookieandkate.com/vegetarian-tacos/',
+    'https://cookieandkate.com/spinach-artichoke-pasta/',
+    'https://cookieandkate.com/mushroom-stroganoff/',
+    'https://loveandlemons.com/vegetarian-chili/',
+    'https://loveandlemons.com/caprese-pasta/',
+    'https://loveandlemons.com/roasted-vegetable-bowl/',
+    'https://loveandlemons.com/stuffed-peppers/',
   ],
 };
 
@@ -92,14 +128,16 @@ function getCuratedUrls(category, limit) {
   const categoryUrls = CURATED_RECIPE_URLS[category] || CURATED_RECIPE_URLS.budget;
   const allUrls = [...categoryUrls];
 
-  // Add some variety from other categories
+  // Add variety from all other categories
   Object.keys(CURATED_RECIPE_URLS).forEach(cat => {
     if (cat !== category) {
-      allUrls.push(...CURATED_RECIPE_URLS[cat].slice(0, 2));
+      // Shuffle each category's URLs and add more variety
+      const shuffledCat = shuffleArray([...CURATED_RECIPE_URLS[cat]]);
+      allUrls.push(...shuffledCat.slice(0, 4));
     }
   });
 
-  // Shuffle and limit
+  // Shuffle all URLs and return up to the limit
   return shuffleArray(allUrls).slice(0, limit);
 }
 
@@ -173,7 +211,10 @@ function mapDietsToCategory(diets) {
   if (diets.includes('Vegetarian')) return 'vegetarian';
   if (diets.includes('Keto') || diets.includes('Low-Carb')) return 'healthy';
   if (diets.includes('Whole30') || diets.includes('Paleo')) return 'healthy';
-  return 'budget';
+  if (diets.includes('Pescatarian')) return 'healthy';
+  // Randomly pick a category for variety when no specific diet
+  const categories = ['budget', 'comfort', 'creative', 'healthy'];
+  return categories[Math.floor(Math.random() * categories.length)];
 }
 
 /**

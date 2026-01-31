@@ -4,7 +4,8 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Link as LinkIcon, Loader2, Sparkles, Check, Plus, Trash2, PenLine, DollarSign, Zap, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Link as LinkIcon, Loader2, Sparkles, Check, Plus, Trash2, PenLine, DollarSign, Zap, AlertCircle, ShoppingCart } from 'lucide-react';
+import { shoppingListStorage } from '@/utils/shoppingListStorage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -394,10 +395,32 @@ export default function AddRecipe() {
                   </div>
                 )}
 
-                <div className="flex gap-3 pt-4">
-                  <Button onClick={() => { setExtractedData(null); setUrl(''); }} variant="outline" className="flex-1 rounded-xl">Try Another</Button>
-                  <Button onClick={() => saveRecipeMutation.mutate(extractedData)} disabled={saveRecipeMutation.isPending} className="flex-1 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500">
-                    {saveRecipeMutation.isPending ? 'Saving...' : 'Save Recipe'}
+                <div className="flex flex-col gap-3 pt-4">
+                  <div className="flex gap-3">
+                    <Button onClick={() => { setExtractedData(null); setUrl(''); }} variant="outline" className="flex-1 rounded-xl">Try Another</Button>
+                    <Button onClick={() => saveRecipeMutation.mutate(extractedData)} disabled={saveRecipeMutation.isPending} className="flex-1 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500">
+                      {saveRecipeMutation.isPending ? 'Saving...' : 'Save Recipe'}
+                    </Button>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      // Get ingredients not marked as pantry items
+                      const ingredientsToAdd = extractedData.ingredients?.filter((_, index) => !pantryItems.includes(index)) || [];
+                      if (ingredientsToAdd.length === 0) {
+                        toast({ title: "No items to add", description: "All ingredients are marked as in your pantry", variant: "destructive" });
+                        return;
+                      }
+                      const count = shoppingListStorage.addRecipeItems(extractedData, ingredientsToAdd);
+                      toast({
+                        title: "Added to Shopping List!",
+                        description: `${count} ingredients added. View your list anytime.`
+                      });
+                    }}
+                    variant="outline"
+                    className="w-full rounded-xl border-2 border-blue-200 text-blue-700 hover:bg-blue-50"
+                  >
+                    <ShoppingCart className="w-4 h-4 mr-2" />
+                    Add Ingredients to Shopping List
                   </Button>
                 </div>
               </CardContent>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { auth, entities } from '@/services';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -83,6 +84,7 @@ const pantryItems = {
 
 export default function Onboarding() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { toast } = useToast();
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -282,29 +284,37 @@ export default function Onboarding() {
       // Also save to localStorage for immediate access
       localStorage.setItem('dishdollar_profile', JSON.stringify(profileData));
 
+      // Invalidate and refetch the userProfile query so Home page gets fresh data
+      await queryClient.invalidateQueries({ queryKey: ['userProfile'] });
+      queryClient.setQueryData(['userProfile'], profileData);
+
       toast({
         title: "Welcome to DishDollar!",
         description: "Your profile has been set up successfully",
       });
 
       // Navigate to Home after onboarding
-      navigate(createPageUrl('Home'));
+      navigate(createPageUrl('Home'), { replace: true });
     } catch (error) {
       console.error('Error in onboarding:', error);
       // Even on error, save to localStorage and navigate
-      localStorage.setItem('dishdollar_profile', JSON.stringify({
+      const fallbackProfile = {
         ...formData,
         user_id: 'demo-user',
         onboarding_completed: true,
         created_at: new Date().toISOString()
-      }));
+      };
+      localStorage.setItem('dishdollar_profile', JSON.stringify(fallbackProfile));
+
+      // Update query cache with fallback profile
+      queryClient.setQueryData(['userProfile'], fallbackProfile);
 
       toast({
         title: "Welcome to DishDollar!",
         description: "Your profile has been set up successfully",
       });
 
-      navigate(createPageUrl('Home'));
+      navigate(createPageUrl('Home'), { replace: true });
     } finally {
       setIsLoading(false);
     }

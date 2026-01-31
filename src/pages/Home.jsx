@@ -615,13 +615,12 @@ export default function Home() {
   const handleRefresh = async () => {
     setIsDiscovering(true);
     try {
-      // First refetch existing recipes
-      await refetchRecipes();
-
-      // Then try to discover new recipes based on user preferences
-      const newRecipes = await getPersonalizedRecipes(profileData, 3);
+      // Fetch fresh new recipes based on user preferences (get more recipes)
+      const newRecipes = await getPersonalizedRecipes(profileData, 10);
 
       if (newRecipes && newRecipes.length > 0) {
+        let addedCount = 0;
+
         // Add discovered recipes to the database
         for (const recipe of newRecipes) {
           // Check if recipe already exists (by title)
@@ -633,17 +632,27 @@ export default function Home() {
               ...recipe,
               id: `recipe-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
             });
+            addedCount++;
           }
         }
 
         // Refetch to show new recipes
         await refetchRecipes();
 
-        toast({
-          title: "New Recipes Found!",
-          description: `Added ${newRecipes.length} fresh recipes`
-        });
+        if (addedCount > 0) {
+          toast({
+            title: "New Recipes Found!",
+            description: `Added ${addedCount} fresh recipes to your collection`
+          });
+        } else {
+          toast({
+            title: "Recipes Refreshed!",
+            description: "No new recipes found - try again later for fresh content"
+          });
+        }
       } else {
+        // Just refetch existing recipes
+        await refetchRecipes();
         toast({
           title: "Recipes Refreshed!",
           description: "Showing latest recipes"
@@ -651,6 +660,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Refresh error:', error);
+      await refetchRecipes();
       toast({
         title: "Refresh Complete",
         description: "Showing cached recipes"
