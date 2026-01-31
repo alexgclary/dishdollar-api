@@ -18,7 +18,7 @@
 ### Tech Stack
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| Frontend | React/Vite + Tailwind CSS | User interface (migrated from Base44) |
+| Frontend | React/Vite + Tailwind CSS | User interface |
 | Hosting (Frontend) | Vercel | Frontend deployment |
 | Backend | Heroku | API services, Kroger integration |
 | Database | Supabase (PostgreSQL) | Auth, user data, recipes, meal plans |

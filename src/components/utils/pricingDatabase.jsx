@@ -1,4 +1,4 @@
-const API_BASE = 'https://budgetbite-api-69cb51842c10.herokuapp.com';
+const API_BASE = 'https://dishdollar-api-69cb51842c10.herokuapp.com';
 
 const KROGER_STORES = [
   'Kroger', 'Ralphs', 'Fred Meyer', 'King Soopers', 'Smith\'s', 'Fry\'s', 

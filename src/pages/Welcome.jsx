@@ -120,10 +120,15 @@ export default function Welcome() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
-              <Link to={createPageUrl('Onboarding')}>
+              <Link to={createPageUrl('Login')}>
                 <Button size="lg" className="rounded-full px-8 py-6 text-lg bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 shadow-lg shadow-green-200">
                   Get Started Free
                   <ArrowRight className="w-5 h-5 ml-2" />
+                </Button>
+              </Link>
+              <Link to={createPageUrl('Login')}>
+                <Button size="lg" variant="outline" className="rounded-full px-8 py-6 text-lg border-2 border-green-500 text-green-600 hover:bg-green-50">
+                  Sign In
                 </Button>
               </Link>
             </div>

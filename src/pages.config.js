@@ -1,6 +1,7 @@
 import AddRecipe from './pages/AddRecipe';
 import Budget from './pages/Budget';
 import Home from './pages/Home';
+import Login from './pages/Login';
 import MealPlanner from './pages/MealPlanner';
 import Onboarding from './pages/Onboarding';
 import Profile from './pages/Profile';
@@ -15,6 +16,7 @@ export const PAGES = {
     "AddRecipe": AddRecipe,
     "Budget": Budget,
     "Home": Home,
+    "Login": Login,
     "MealPlanner": MealPlanner,
     "Onboarding": Onboarding,
     "Profile": Profile,
@@ -25,7 +27,7 @@ export const PAGES = {
 }
 
 export const pagesConfig = {
-    mainPage: "Onboarding",
+    mainPage: "Welcome",
     Pages: PAGES,
     Layout: __Layout,
 };

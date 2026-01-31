@@ -2,7 +2,6 @@
  * Application Parameters
  *
  * This module provides access to application configuration from URL params and environment variables.
- * Previously used for Base44 configuration, now simplified for standalone operation.
  */
 
 const isNode = typeof window === 'undefined';

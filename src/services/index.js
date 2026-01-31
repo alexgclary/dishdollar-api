@@ -18,7 +18,7 @@ import {
 } from './entities';
 import { supabase, isSupabaseConfigured } from '@/api/supabase';
 
-// Main app client - replaces base44
+// Main app client
 export const dishDollar = {
   auth,
   entities,

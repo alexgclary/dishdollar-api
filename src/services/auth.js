@@ -30,9 +30,8 @@ export const auth = {
       return JSON.parse(stored);
     }
 
-    // In demo mode, auto-create a demo user
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(DEMO_USER));
-    return DEMO_USER;
+    // In demo mode, return null until user explicitly logs in
+    return null;
   },
 
   /**
@@ -52,7 +51,7 @@ export const auth = {
     }
 
     // Demo mode - just store the user
-    const user = { ...DEMO_USER, email };
+    const user = { ...DEMO_USER, email, id: `user-${Date.now()}` };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
     return user;
   },
@@ -61,20 +60,51 @@ export const auth = {
    * Sign up with email and password
    * @param {string} email
    * @param {string} password
+   * @param {Object} metadata - Additional user metadata
    * @returns {Promise<Object>} User data
    */
-  async signUp(email, password) {
+  async signUp(email, password, metadata = {}) {
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.auth.signUp({
         email,
-        password
+        password,
+        options: {
+          data: metadata
+        }
       });
       if (error) throw error;
       return data.user;
     }
 
     // Demo mode - just store the user
-    const user = { id: `user-${Date.now()}`, email, name: email.split('@')[0] };
+    const user = { id: `user-${Date.now()}`, email, name: email.split('@')[0], ...metadata };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    return user;
+  },
+
+  /**
+   * Sign in with Google OAuth
+   * @returns {Promise<void>}
+   */
+  async signInWithGoogle() {
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/Home`
+        }
+      });
+      if (error) throw error;
+      return;
+    }
+
+    // Demo mode - simulate Google sign in
+    const user = {
+      id: `google-${Date.now()}`,
+      email: 'demo.google@dishdollar.app',
+      name: 'Google Demo User',
+      app_metadata: { provider: 'google' }
+    };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
     return user;
   },
@@ -88,7 +118,9 @@ export const auth = {
       await supabase.auth.signOut();
     }
 
+    // Clear all DishDollar data from localStorage
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem('dishdollar_profile');
 
     if (redirectUrl) {
       window.location.href = redirectUrl;
@@ -100,8 +132,8 @@ export const auth = {
    * @param {string} returnUrl - URL to return to after login
    */
   redirectToLogin(returnUrl) {
-    // In this app, we handle auth in-app, so just redirect to welcome
-    const url = new URL('/Welcome', window.location.origin);
+    // In this app, we handle auth in-app, so just redirect to login
+    const url = new URL('/Login', window.location.origin);
     if (returnUrl) {
       url.searchParams.set('returnUrl', returnUrl);
     }
@@ -124,6 +156,14 @@ export const auth = {
     // Demo mode - no real-time auth state, just call with current user
     auth.me().then(callback);
     return () => {}; // No-op unsubscribe
+  },
+
+  /**
+   * Check if running in demo mode
+   * @returns {boolean}
+   */
+  isDemoMode() {
+    return !isSupabaseConfigured;
   }
 };
 
