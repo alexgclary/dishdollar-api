@@ -76,3 +76,4 @@ git push heroku main
 - Budget tracking
 - Pantry management
 - Multiple dietary preferences support
+
