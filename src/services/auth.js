@@ -91,7 +91,7 @@ export const auth = {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/Home`
+          redirectTo: 'https://dishdollar.com/Home'
         }
       });
       if (error) throw error;
