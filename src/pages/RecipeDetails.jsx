@@ -28,6 +28,7 @@ export default function RecipeDetails() {
   const [livePrices, setLivePrices] = useState({});
   const [isPricingLoading, setIsPricingLoading] = useState(false);
   const [showFullScreenInstructions, setShowFullScreenInstructions] = useState(false);
+  const [isInstacartLoading, setIsInstacartLoading] = useState(false);
 
   const urlParams = new URLSearchParams(window.location.search);
   const recipeId = urlParams.get('id');
@@ -245,6 +246,17 @@ export default function RecipeDetails() {
     toast({
       title: "Added to shopping list!",
       description: `${count} item${count !== 1 ? 's' : ''} from ${recipe.title} added`
+    });
+  };
+
+  const handleShopWithInstacart = async () => {
+    setIsInstacartLoading(true);
+    // Simulate API call delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    setIsInstacartLoading(false);
+    toast({
+      title: "Coming Soon!",
+      description: "Instacart integration coming soon! You'll be able to order ingredients directly.",
     });
   };
 
@@ -489,11 +501,21 @@ export default function RecipeDetails() {
                   </Button>
 
                   <Button
-                    onClick={() => window.open('https://docs.instacart.com/developer_platform_api/', '_blank')}
-                    className="w-full rounded-full bg-green-600 hover:bg-green-700 text-white"
+                    onClick={handleShopWithInstacart}
+                    disabled={isInstacartLoading}
+                    className="w-full rounded-full bg-green-600 hover:bg-green-700 text-white disabled:opacity-70"
                   >
-                    <ShoppingCart className="w-5 h-5 mr-2" />
-                    Shop with Instacart
+                    {isInstacartLoading ? (
+                      <>
+                        <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                        Creating Cart...
+                      </>
+                    ) : (
+                      <>
+                        <ShoppingCart className="w-5 h-5 mr-2" />
+                        Shop with Instacart
+                      </>
+                    )}
                   </Button>
                 </div>
 
