@@ -245,6 +245,12 @@ export default function ShoppingList() {
     toast({ title: "Cleared", description: "Shopping list cleared" });
   };
 
+  const removeRecipeItems = (recipeName) => {
+    const items = shoppingListStorage.removeRecipeItems(recipeName);
+    setPersistedItems(items);
+    toast({ title: "Removed", description: `All items from "${recipeName}" removed` });
+  };
+
   // Group items by source for display
   const groupedItems = useMemo(() => {
     const groups = {};
@@ -344,12 +350,20 @@ export default function ShoppingList() {
           <CardContent className="p-4">
             <div className="flex gap-2 items-center justify-between mb-3">
               <h3 className="font-medium text-gray-700">Add Items</h3>
-              {checkedCount > 0 && (
-                <Button onClick={clearChecked} variant="outline" size="sm" className="text-red-500 border-red-200 hover:bg-red-50">
-                  <Trash2 className="w-4 h-4 mr-1" />
-                  Clear Checked ({checkedCount})
-                </Button>
-              )}
+              <div className="flex gap-2">
+                {combinedItems.length > 0 && (
+                  <Button onClick={clearAll} variant="outline" size="sm" className="text-red-500 border-red-200 hover:bg-red-50">
+                    <Trash2 className="w-4 h-4 mr-1" />
+                    Clear All
+                  </Button>
+                )}
+                {checkedCount > 0 && (
+                  <Button onClick={clearChecked} variant="outline" size="sm" className="text-orange-500 border-orange-200 hover:bg-orange-50">
+                    <Trash2 className="w-4 h-4 mr-1" />
+                    Clear Checked ({checkedCount})
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="relative">
               <div className="flex gap-2">
@@ -390,11 +404,24 @@ export default function ShoppingList() {
           return (
             <Card key={source} className="mb-6">
               <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <SourceIcon className={`w-5 h-5 ${isRecipeSource ? 'text-amber-600' : source === 'Meal Plan' ? 'text-green-600' : 'text-gray-500'}`} />
-                  <span>{source === 'manual' ? 'Added Items' : source}</span>
-                  <span className="text-sm font-normal text-gray-500">({items.length})</span>
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <SourceIcon className={`w-5 h-5 ${isRecipeSource ? 'text-amber-600' : source === 'Meal Plan' ? 'text-green-600' : 'text-gray-500'}`} />
+                    <span>{source === 'manual' ? 'Added Items' : source}</span>
+                    <span className="text-sm font-normal text-gray-500">({items.length})</span>
+                  </CardTitle>
+                  {isRecipeSource && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeRecipeItems(source)}
+                      className="text-gray-400 hover:text-red-500 hover:bg-red-50 h-8 px-2"
+                      title={`Remove all items from ${source}`}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-2">
                 {items.map((item) => (

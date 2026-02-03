@@ -1,10 +1,21 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Clock, Users, DollarSign, Heart, Leaf, Package, ShoppingCart, Check } from 'lucide-react';
+import { Clock, Users, DollarSign, Heart, Leaf, Package, ShoppingCart, Check, Globe } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { shoppingListStorage } from '@/utils/shoppingListStorage';
 import { useToast } from '@/components/ui/use-toast';
+
+// Format source site name for display (e.g., "allrecipes.com" -> "All Recipes")
+const formatSourceSite = (site) => {
+  if (!site) return '';
+  return site
+    .replace(/^(https?:\/\/)?(www\.)?/, '')
+    .replace(/\.(com|org|net|io)$/, '')
+    .split(/[-_.]/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
 
 export default function RecipeCard({ recipe, onSave, isSaved, onClick, householdSize = 4, pantryItems = [] }) {
   const { toast } = useToast();
@@ -125,16 +136,26 @@ export default function RecipeCard({ recipe, onSave, isSaved, onClick, household
         )}
 
         {/* Cuisine Tags */}
-        <div className="absolute bottom-3 left-3 flex gap-2 flex-wrap">
+        <div className="absolute bottom-3 left-3 flex gap-2 flex-wrap max-w-[60%]">
           {recipe.cuisines?.slice(0, 2).map((cuisine) => (
-            <Badge 
-              key={cuisine} 
+            <Badge
+              key={cuisine}
               className="bg-white/90 text-gray-700 text-xs font-medium px-2 py-1 rounded-full"
             >
               {cuisine}
             </Badge>
           ))}
         </div>
+
+        {/* Recipe Source Badge */}
+        {recipe.source_site && (
+          <div className="absolute bottom-3 right-3">
+            <Badge className="bg-blue-500/90 text-white text-xs font-medium px-2 py-1 rounded-full flex items-center gap-1">
+              <Globe className="w-3 h-3" />
+              {formatSourceSite(recipe.source_site)}
+            </Badge>
+          </div>
+        )}
       </div>
 
       {/* Content */}

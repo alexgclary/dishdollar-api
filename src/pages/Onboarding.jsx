@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ChevronRight, ChevronLeft, Sparkles, MapPin, Utensils, Salad, Users, Package, Bell, AlertCircle, Loader2, Navigation, Store, Check } from 'lucide-react';
 import OnboardingProgress from '@/components/onboarding/OnboardingProgress';
 import PillSelector from '@/components/onboarding/PillSelector';
+import SearchablePillSelector from '@/components/onboarding/SearchablePillSelector';
+import AppIntroModal from '@/components/onboarding/AppIntroModal';
 import { FloatingVegetables, WavyBackground } from '@/components/ui/DecorativeElements';
 import { US_STATES } from '@/utils/usStates';
 
@@ -82,6 +84,87 @@ const pantryItems = {
   tools: ['Pots', 'Pans', 'Blender', 'Mixer', 'Air Fryer', 'Instant Pot', 'Oven', 'Grill', 'Food Processor', 'Slow Cooker']
 };
 
+// Extended cuisines for search
+const extendedCuisines = [
+  { value: 'Filipino', icon: '🍜' }, { value: 'Portuguese', icon: '🐟' },
+  { value: 'Peruvian', icon: '🥔' }, { value: 'Turkish', icon: '🥙' },
+  { value: 'Moroccan', icon: '🍲' }, { value: 'Polish', icon: '🥟' },
+  { value: 'Russian', icon: '🍜' }, { value: 'Cuban', icon: '🍖' },
+  { value: 'Jamaican', icon: '🌶️' }, { value: 'Hawaiian', icon: '🍍' },
+  { value: 'Indonesian', icon: '🍛' }, { value: 'Malaysian', icon: '🍜' },
+  { value: 'Lebanese', icon: '🧆' }, { value: 'Israeli', icon: '🥙' },
+  { value: 'Argentinian', icon: '🥩' }, { value: 'Colombian', icon: '🫓' },
+  { value: 'Soul Food', icon: '🍗' }, { value: 'Cajun', icon: '🦐' },
+  { value: 'Tex-Mex', icon: '🌯' }, { value: 'British', icon: '🍟' },
+  { value: 'Irish', icon: '🥘' }, { value: 'Swedish', icon: '🧆' },
+  { value: 'Nigerian', icon: '🍲' }, { value: 'Ghanaian', icon: '🍛' }
+];
+
+// Common allergies (FDA Top 9 + common ones)
+const allergies = [
+  { value: 'Peanuts', icon: '🥜' },
+  { value: 'Tree Nuts', icon: '🌰' },
+  { value: 'Dairy', icon: '🥛' },
+  { value: 'Eggs', icon: '🥚' },
+  { value: 'Wheat/Gluten', icon: '🌾' },
+  { value: 'Soy', icon: '🫛' },
+  { value: 'Fish', icon: '🐟' },
+  { value: 'Shellfish', icon: '🦐' },
+  { value: 'Sesame', icon: '🫘' }
+];
+
+// Extended allergies for search
+const extendedAllergies = [
+  { value: 'Mustard', icon: '🟡' },
+  { value: 'Celery', icon: '🥬' },
+  { value: 'Lupin', icon: '🌸' },
+  { value: 'Mollusks', icon: '🦪' },
+  { value: 'Sulfites', icon: '🍷' },
+  { value: 'Corn', icon: '🌽' },
+  { value: 'Latex (cross-reactive)', icon: '🍌' },
+  { value: 'Red Meat', icon: '🥩' },
+  { value: 'Nightshades', icon: '🍅' },
+  { value: 'Coconut', icon: '🥥' },
+  { value: 'Garlic', icon: '🧄' },
+  { value: 'Onion', icon: '🧅' }
+];
+
+// Extended basics for search
+const extendedBasics = [
+  'Coconut Oil', 'Avocado Oil', 'Sesame Oil', 'Ghee', 'Lard',
+  'Brown Sugar', 'Powdered Sugar', 'Whole Wheat Flour', 'Bread Flour', 'Almond Flour',
+  'Cornstarch', 'Baking Soda', 'Baking Powder', 'Yeast', 'Oats',
+  'Quinoa', 'Couscous', 'Brown Rice', 'Basmati Rice', 'Jasmine Rice',
+  'Spaghetti', 'Penne', 'Linguine', 'Tortillas', 'Pita Bread'
+];
+
+// Extended spices for search
+const extendedSpices = [
+  'Rosemary', 'Sage', 'Nutmeg', 'Cloves', 'Cardamom', 'Cayenne',
+  'Italian Seasoning', 'Taco Seasoning', 'Curry Powder', 'Smoked Paprika',
+  'Red Pepper Flakes', 'Fennel Seeds', 'Coriander', 'Dill', 'Mint',
+  'Tarragon', 'Chives', 'Lemongrass', 'Star Anise', 'Saffron',
+  'Allspice', 'Mustard Seeds', 'Celery Salt', 'Onion Powder', 'Garlic Powder'
+];
+
+// Extended condiments for search
+const extendedCondiments = [
+  'Worcestershire Sauce', 'BBQ Sauce', 'Sriracha', 'Tahini', 'Fish Sauce',
+  'Oyster Sauce', 'Hoisin Sauce', 'Teriyaki Sauce', 'Salsa', 'Pesto',
+  'Ranch Dressing', 'Italian Dressing', 'Balsamic Vinegar', 'Rice Vinegar', 'Apple Cider Vinegar',
+  'Dijon Mustard', 'Whole Grain Mustard', 'Relish', 'Pickles', 'Capers',
+  'Olives', 'Sun-Dried Tomatoes', 'Anchovy Paste', 'Miso Paste', 'Chili Paste'
+];
+
+// Extended kitchen tools for search
+const extendedTools = [
+  'Sous Vide', 'Dutch Oven', 'Cast Iron Skillet', 'Wok', 'Mandoline',
+  'Kitchen Scale', 'Thermometer', 'Rice Cooker', 'Pressure Cooker', 'Griddle',
+  'Waffle Maker', 'Stand Mixer', 'Immersion Blender', 'Spiralizer', 'Juicer',
+  'Dehydrator', 'Smoker', 'Pizza Stone', 'Bread Machine', 'Ice Cream Maker',
+  'Toaster Oven', 'Convection Oven', 'Steamer', 'Deep Fryer', 'Popcorn Maker'
+];
+
 export default function Onboarding() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -99,12 +182,19 @@ export default function Onboarding() {
     preferred_store: '',
     cuisines: [],
     dietary_restrictions: [],
+    allergies: [],
     household_size: 2,
+    cooking_nights_per_week: 5,
     budget_type: 'weekly',
     budget_amount: 150,
     budget_days: 7,
     pantry_items: [],
     notifications_enabled: false
+  });
+
+  // Show app intro on first visit
+  const [showIntro, setShowIntro] = useState(() => {
+    return !localStorage.getItem('dishdollar_intro_seen');
   });
 
   const updateForm = (key, value) => {
@@ -523,11 +613,14 @@ export default function Onboarding() {
               <h2 className="text-2xl font-bold text-gray-800">What cuisines do you love?</h2>
               <p className="text-gray-500 mt-2">Select all that make your taste buds happy</p>
             </div>
-            <PillSelector
-              options={cuisines.map(c => ({ value: c.value, label: `${c.icon} ${c.value}` }))}
+            <SearchablePillSelector
+              options={cuisines.map(c => ({ value: c.value, label: c.value, icon: c.icon }))}
+              searchableOptions={extendedCuisines.map(c => ({ value: c.value, label: c.value, icon: c.icon }))}
               selected={formData.cuisines}
               onChange={(value) => updateForm('cuisines', value)}
               columns={3}
+              placeholder="Search cuisines..."
+              searchLabel="More Cuisines"
             />
             {errors.cuisines && (
               <p className="text-red-500 text-sm mt-1 flex items-center gap-1 justify-center">
@@ -543,8 +636,8 @@ export default function Onboarding() {
 
       case 4:
         return (
-          <motion.div key="step4" variants={variants} initial="enter" animate="center" exit="exit" className="space-y-6">
-            <div className="text-center mb-8">
+          <motion.div key="step4" variants={variants} initial="enter" animate="center" exit="exit" className="space-y-6 max-h-[60vh] overflow-y-auto">
+            <div className="text-center mb-6">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Salad className="w-8 h-8 text-green-600" />
               </div>
@@ -558,17 +651,39 @@ export default function Onboarding() {
               columns={3}
             />
             <p className="text-center text-sm text-gray-400">
-              {formData.dietary_restrictions.length === 0 
-                ? "Skip if you have no restrictions" 
+              {formData.dietary_restrictions.length === 0
+                ? "Skip if you have no restrictions"
                 : `${formData.dietary_restrictions.length} selected`}
             </p>
+
+            {/* Allergy Section */}
+            <div className="pt-6 border-t border-gray-200">
+              <div className="text-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">Any food allergies?</h3>
+                <p className="text-gray-500 text-sm">We'll exclude recipes with these ingredients</p>
+              </div>
+              <SearchablePillSelector
+                options={allergies.map(a => ({ value: a.value, label: a.value, icon: a.icon }))}
+                searchableOptions={extendedAllergies.map(a => ({ value: a.value, label: a.value, icon: a.icon }))}
+                selected={formData.allergies}
+                onChange={(value) => updateForm('allergies', value)}
+                columns={3}
+                placeholder="Search allergies..."
+                searchLabel="Other"
+              />
+              <p className="text-center text-sm text-gray-400 mt-2">
+                {formData.allergies.length === 0
+                  ? "Skip if you have no allergies"
+                  : `${formData.allergies.length} allergy${formData.allergies.length !== 1 ? ' restrictions' : ''}`}
+              </p>
+            </div>
           </motion.div>
         );
 
       case 5:
         return (
-          <motion.div key="step5" variants={variants} initial="enter" animate="center" exit="exit" className="space-y-6">
-            <div className="text-center mb-8">
+          <motion.div key="step5" variants={variants} initial="enter" animate="center" exit="exit" className="space-y-6 max-h-[60vh] overflow-y-auto">
+            <div className="text-center mb-6">
               <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Users className="w-8 h-8 text-purple-600" />
               </div>
@@ -596,7 +711,33 @@ export default function Onboarding() {
                   </button>
                 </div>
               </div>
-              <div>
+
+              {/* Cooking Nights Question */}
+              <div className="pt-4 border-t border-gray-100">
+                <Label>How many nights a week do you cook dinner?</Label>
+                <div className="flex items-center justify-center gap-4 mt-3">
+                  <button
+                    onClick={() => updateForm('cooking_nights_per_week', Math.max(1, formData.cooking_nights_per_week - 1))}
+                    className="w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200 text-2xl font-semibold transition-colors"
+                  >
+                    -
+                  </button>
+                  <span className="text-4xl font-bold text-blue-600 w-16 text-center">
+                    {formData.cooking_nights_per_week}
+                  </span>
+                  <button
+                    onClick={() => updateForm('cooking_nights_per_week', Math.min(7, formData.cooking_nights_per_week + 1))}
+                    className="w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200 text-2xl font-semibold transition-colors"
+                  >
+                    +
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1 text-center">
+                  We'll suggest ~{formData.cooking_nights_per_week * 4} recipes per month for your meal plans
+                </p>
+              </div>
+
+              <div className="pt-4 border-t border-gray-100">
                 <Label>Budget Period</Label>
                 <div className="flex gap-2 mt-2">
                   {['weekly', 'monthly', 'custom'].map((type) => (
@@ -608,8 +749,8 @@ export default function Onboarding() {
                         if (type === 'monthly') updateForm('budget_days', 30);
                       }}
                       className={`flex-1 py-3 rounded-xl font-medium capitalize transition-all border-2
-                        ${formData.budget_type === type 
-                          ? 'border-green-500 bg-green-50 text-green-700' 
+                        ${formData.budget_type === type
+                          ? 'border-green-500 bg-green-50 text-green-700'
                           : 'border-gray-200 hover:border-green-300'}`}
                     >
                       {type}
@@ -648,40 +789,96 @@ export default function Onboarding() {
         );
 
       case 6:
+        // Helper functions for each category
+        const allBasicsOptions = [...pantryItems.basics, ...extendedBasics];
+        const allSpicesOptions = [...pantryItems.spices, ...extendedSpices];
+        const allCondimentsOptions = [...pantryItems.condiments, ...extendedCondiments];
+        const allToolsOptions = [...pantryItems.tools, ...extendedTools];
+
+        const getSelectedForCategory = (categoryOptions) =>
+          formData.pantry_items.filter(item => categoryOptions.includes(item));
+
+        const getSelectedOutsideCategory = (categoryOptions) =>
+          formData.pantry_items.filter(item => !categoryOptions.includes(item));
+
+        const handleCategoryChange = (categoryOptions, newItems) => {
+          const outsideCategory = getSelectedOutsideCategory(categoryOptions);
+          updateForm('pantry_items', [...outsideCategory, ...newItems]);
+        };
+
         return (
           <motion.div key="step6" variants={variants} initial="enter" animate="center" exit="exit" className="space-y-6">
-            <div className="text-center mb-8">
+            <div className="text-center mb-6">
               <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Package className="w-8 h-8 text-orange-600" />
               </div>
               <h2 className="text-2xl font-bold text-gray-800">What's in your pantry?</h2>
               <p className="text-gray-500 mt-2">We'll deduct these from recipe costs</p>
             </div>
-            <div className="space-y-6 max-h-80 overflow-y-auto">
-              {Object.entries(pantryItems).map(([category, items]) => (
-                <div key={category}>
-                  <Label className="capitalize text-sm text-gray-600 font-semibold">{category}</Label>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {items.map((item) => (
-                      <button
-                        key={item}
-                        onClick={() => {
-                          const newItems = formData.pantry_items.includes(item)
-                            ? formData.pantry_items.filter(i => i !== item)
-                            : [...formData.pantry_items, item];
-                          updateForm('pantry_items', newItems);
-                        }}
-                        className={`px-3 py-1.5 rounded-full text-sm transition-all border
-                          ${formData.pantry_items.includes(item)
-                            ? 'bg-green-500 text-white border-green-500'
-                            : 'bg-white border-gray-200 hover:border-green-300'}`}
-                      >
-                        {item}
-                      </button>
-                    ))}
-                  </div>
+            <div className="space-y-6 max-h-[55vh] overflow-y-auto pr-2">
+              {/* Basics */}
+              <div>
+                <Label className="text-sm text-gray-600 font-semibold">Basics</Label>
+                <div className="mt-2">
+                  <SearchablePillSelector
+                    options={pantryItems.basics.map(t => ({ value: t, label: t }))}
+                    searchableOptions={extendedBasics.map(t => ({ value: t, label: t }))}
+                    selected={getSelectedForCategory(allBasicsOptions)}
+                    onChange={(newItems) => handleCategoryChange(allBasicsOptions, newItems)}
+                    columns={3}
+                    placeholder="Search basics..."
+                    searchLabel="More"
+                  />
                 </div>
-              ))}
+              </div>
+
+              {/* Spices */}
+              <div>
+                <Label className="text-sm text-gray-600 font-semibold">Spices</Label>
+                <div className="mt-2">
+                  <SearchablePillSelector
+                    options={pantryItems.spices.map(t => ({ value: t, label: t }))}
+                    searchableOptions={extendedSpices.map(t => ({ value: t, label: t }))}
+                    selected={getSelectedForCategory(allSpicesOptions)}
+                    onChange={(newItems) => handleCategoryChange(allSpicesOptions, newItems)}
+                    columns={3}
+                    placeholder="Search spices..."
+                    searchLabel="More"
+                  />
+                </div>
+              </div>
+
+              {/* Condiments */}
+              <div>
+                <Label className="text-sm text-gray-600 font-semibold">Condiments</Label>
+                <div className="mt-2">
+                  <SearchablePillSelector
+                    options={pantryItems.condiments.map(t => ({ value: t, label: t }))}
+                    searchableOptions={extendedCondiments.map(t => ({ value: t, label: t }))}
+                    selected={getSelectedForCategory(allCondimentsOptions)}
+                    onChange={(newItems) => handleCategoryChange(allCondimentsOptions, newItems)}
+                    columns={3}
+                    placeholder="Search condiments..."
+                    searchLabel="More"
+                  />
+                </div>
+              </div>
+
+              {/* Kitchen Tools */}
+              <div>
+                <Label className="text-sm text-gray-600 font-semibold">Kitchen Tools</Label>
+                <div className="mt-2">
+                  <SearchablePillSelector
+                    options={pantryItems.tools.map(t => ({ value: t, label: t }))}
+                    searchableOptions={extendedTools.map(t => ({ value: t, label: t }))}
+                    selected={getSelectedForCategory(allToolsOptions)}
+                    onChange={(newItems) => handleCategoryChange(allToolsOptions, newItems)}
+                    columns={3}
+                    placeholder="Search tools..."
+                    searchLabel="More"
+                  />
+                </div>
+              </div>
             </div>
             <p className="text-center text-sm text-gray-400">
               {formData.pantry_items.length} items selected
@@ -748,6 +945,15 @@ export default function Onboarding() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-amber-50 relative overflow-hidden">
+      {/* App Intro Modal - shows on first visit */}
+      <AppIntroModal
+        open={showIntro}
+        onClose={() => {
+          localStorage.setItem('dishdollar_intro_seen', 'true');
+          setShowIntro(false);
+        }}
+      />
+
       <FloatingVegetables />
       <WavyBackground />
       

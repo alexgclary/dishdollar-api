@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { shoppingListStorage } from '@/utils/shoppingListStorage';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Clock, Users, DollarSign, Heart, Plus, Minus, ShoppingCart, ChefHat, Leaf, Calendar, Copy, Check, ListPlus, RefreshCw, Zap, Store } from 'lucide-react';
+import { ArrowLeft, Clock, Users, DollarSign, Heart, Plus, Minus, ShoppingCart, ChefHat, Leaf, Calendar, Copy, Check, ListPlus, RefreshCw, Zap, Store, ExternalLink, Maximize2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,6 +27,7 @@ export default function RecipeDetails() {
   const [itemsInList, setItemsInList] = useState(false);
   const [livePrices, setLivePrices] = useState({});
   const [isPricingLoading, setIsPricingLoading] = useState(false);
+  const [showFullScreenInstructions, setShowFullScreenInstructions] = useState(false);
 
   const urlParams = new URLSearchParams(window.location.search);
   const recipeId = urlParams.get('id');
@@ -80,6 +81,7 @@ export default function RecipeDetails() {
             priceMap[item.ingredient?.toLowerCase() || item.name?.toLowerCase()] = {
               price: item.price,
               product: item.productName,
+              productUrl: item.productUrl || item.url || null,
               source: 'kroger'
             };
           });
@@ -352,8 +354,21 @@ export default function RecipeDetails() {
                         <span className={`text-sm font-semibold ${isInPantry ? 'text-green-600' : livePrices[ing.name?.toLowerCase()] ? 'text-blue-600' : 'text-gray-600'}`}>
                           {isInPantry ? 'In pantry' : (
                             <span className="flex items-center gap-1">
-                              ${(getIngredientPrice(ing) * scale).toFixed(2)}
-                              {livePrices[ing.name?.toLowerCase()] && (
+                              {livePrices[ing.name?.toLowerCase()]?.productUrl ? (
+                                <a
+                                  href={livePrices[ing.name?.toLowerCase()].productUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="hover:underline flex items-center gap-1 text-blue-600"
+                                >
+                                  ${(getIngredientPrice(ing) * scale).toFixed(2)}
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              ) : (
+                                <>${(getIngredientPrice(ing) * scale).toFixed(2)}</>
+                              )}
+                              {livePrices[ing.name?.toLowerCase()] && !livePrices[ing.name?.toLowerCase()]?.productUrl && (
                                 <Zap className="w-3 h-3 text-blue-500" />
                               )}
                             </span>
@@ -367,7 +382,18 @@ export default function RecipeDetails() {
             </Card>
 
             <Card>
-              <CardHeader><CardTitle>Instructions</CardTitle></CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Instructions</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowFullScreenInstructions(true)}
+                  className="text-gray-500 hover:text-green-600"
+                >
+                  <Maximize2 className="w-4 h-4 mr-1" />
+                  Full Screen
+                </Button>
+              </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   {recipe.instructions?.map((instruction, index) => (
@@ -514,6 +540,46 @@ export default function RecipeDetails() {
               {copiedList ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
               {copiedList ? 'Copied!' : 'Copy to clipboard'}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Full Screen Instructions Modal */}
+      <Dialog open={showFullScreenInstructions} onOpenChange={setShowFullScreenInstructions}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <ChefHat className="w-6 h-6 text-green-600" />
+                {recipe?.title} - Instructions
+              </span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto py-4">
+            <div className="space-y-6">
+              {recipe?.instructions?.map((instruction, index) => (
+                <div key={index} className="flex gap-6">
+                  <div className="flex-shrink-0 w-12 h-12 bg-green-500 text-white rounded-full flex items-center justify-center text-xl font-bold shadow-lg">
+                    {index + 1}
+                  </div>
+                  <div className="flex-1 pt-2">
+                    <p className="text-lg text-gray-800 leading-relaxed">{instruction}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex-shrink-0 pt-4 border-t border-gray-100">
+            <div className="flex items-center justify-between text-sm text-gray-500">
+              <span>{recipe?.instructions?.length || 0} steps total</span>
+              <Button
+                variant="outline"
+                onClick={() => setShowFullScreenInstructions(false)}
+                className="rounded-full"
+              >
+                Close
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

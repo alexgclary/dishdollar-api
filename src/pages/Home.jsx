@@ -536,12 +536,21 @@ export default function Home() {
     queryFn: () => entities.Recipe.list('-created_date', 50)
   });
 
-  // Fetch saved recipes
+  // Fetch saved recipes (with localStorage fallback for demo mode)
   const { data: savedRecipes = [] } = useQuery({
     queryKey: ['savedRecipes'],
     queryFn: async () => {
-      const user = await auth.me();
-      return entities.SavedRecipe.filter({ user_id: user.id });
+      try {
+        const user = await auth.me();
+        if (user?.id) {
+          return entities.SavedRecipe.filter({ user_id: user.id });
+        }
+      } catch (error) {
+        console.log('Auth not available for saved recipes, using localStorage');
+      }
+      // Fallback to localStorage for demo mode
+      const localSaved = localStorage.getItem('dishdollar_saved_recipes');
+      return localSaved ? JSON.parse(localSaved) : [];
     }
   });
 
@@ -570,19 +579,48 @@ export default function Home() {
     }
   });
 
-  // Save recipe mutation
+  // Save recipe mutation (with localStorage fallback for demo mode)
   const saveRecipeMutation = useMutation({
     mutationFn: async (recipe) => {
-      const user = await auth.me();
+      let userId = null;
+      try {
+        const user = await auth.me();
+        if (user?.id) userId = user.id;
+      } catch (error) {
+        console.log('Auth not available, using demo mode for save');
+      }
+
       const existing = savedRecipes.find(sr => sr.recipe_id === recipe.id);
-      if (existing) {
-        return entities.SavedRecipe.delete(existing.id);
+
+      if (userId) {
+        // Authenticated user - use Supabase
+        if (existing) {
+          return entities.SavedRecipe.delete(existing.id);
+        } else {
+          return entities.SavedRecipe.create({
+            user_id: userId,
+            recipe_id: recipe.id,
+            saved_at: new Date().toISOString()
+          });
+        }
       } else {
-        return entities.SavedRecipe.create({
-          user_id: user.id,
-          recipe_id: recipe.id,
-          saved_at: new Date().toISOString()
-        });
+        // Demo mode - use localStorage
+        const localSaved = JSON.parse(localStorage.getItem('dishdollar_saved_recipes') || '[]');
+        if (existing) {
+          const updated = localSaved.filter(sr => sr.recipe_id !== recipe.id);
+          localStorage.setItem('dishdollar_saved_recipes', JSON.stringify(updated));
+          return null;
+        } else {
+          const newSaved = {
+            id: `saved-${Date.now()}`,
+            user_id: 'demo-user',
+            recipe_id: recipe.id,
+            saved_at: new Date().toISOString()
+          };
+          const updated = [...localSaved, newSaved];
+          localStorage.setItem('dishdollar_saved_recipes', JSON.stringify(updated));
+          return newSaved;
+        }
       }
     },
     onSuccess: () => {

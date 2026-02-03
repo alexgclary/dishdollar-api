@@ -214,6 +214,38 @@ export const shoppingListStorage = {
   },
 
   /**
+   * Remove all items from a specific recipe
+   * @param {string} recipeName - Recipe name to remove items from
+   */
+  removeRecipeItems: (recipeName) => {
+    const items = shoppingListStorage.getItems();
+    const filtered = items.filter(item => {
+      // If primary source matches, check if there are other sources
+      if (item.source === recipeName) {
+        // If there are other sources, update the item
+        if (item.sources && item.sources.length > 1) {
+          item.sources = item.sources.filter(s => s !== recipeName);
+          item.source = item.sources[0] || 'manual';
+          return true;
+        }
+        // No other sources, remove the item
+        return false;
+      }
+      // If in sources array, remove from sources
+      if (item.sources?.includes(recipeName)) {
+        item.sources = item.sources.filter(s => s !== recipeName);
+        // If no sources left, remove the item
+        if (item.sources.length === 0) {
+          return false;
+        }
+      }
+      return true;
+    });
+    shoppingListStorage.saveItems(filtered);
+    return filtered;
+  },
+
+  /**
    * Check if a recipe's ingredients are in the list
    * @param {string} recipeName - Recipe name to check
    */
