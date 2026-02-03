@@ -4,13 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { startOfWeek, addDays, format } from 'date-fns';
-import { ShoppingCart, Check, Copy, ExternalLink, ArrowLeft, Plus, Trash2, Leaf, Beef, Milk, Package, ShoppingBag, X, ChefHat } from 'lucide-react';
+import { ShoppingCart, Copy, ArrowLeft, Plus, Trash2, Leaf, Beef, Milk, Package, ShoppingBag, X, ChefHat } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/use-toast';
-import { shoppingListStorage, COMMON_GROCERY_ITEMS } from '@/utils/shoppingListStorage';
+import { shoppingListStorage } from '@/utils/shoppingListStorage';
 
 const CATEGORIES = {
   'Produce': ['onion', 'garlic', 'tomato', 'potato', 'carrot', 'celery', 'pepper', 'broccoli', 'spinach', 'lettuce', 'cucumber', 'avocado', 'lemon', 'lime', 'ginger', 'cilantro', 'basil', 'parsley', 'kale', 'mushroom'],

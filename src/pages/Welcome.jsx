@@ -226,8 +226,18 @@ export default function Welcome() {
         </div>
 
         {/* Footer */}
-        <footer className="text-center py-8 text-gray-500 text-sm">
+        <footer className="text-center py-8 text-gray-500 text-sm space-y-3">
           <p>Made with 💚 for budget-conscious home cooks</p>
+          <div className="flex justify-center gap-4">
+            <Link to={createPageUrl('PrivacyPolicy')} className="hover:text-green-600 transition-colors">
+              Privacy Policy
+            </Link>
+            <span>•</span>
+            <Link to={createPageUrl('TermsOfService')} className="hover:text-green-600 transition-colors">
+              Terms of Service
+            </Link>
+          </div>
+          <p className="text-xs text-gray-400">© {new Date().getFullYear()} DishDollar. All rights reserved.</p>
         </footer>
       </div>
     </div>

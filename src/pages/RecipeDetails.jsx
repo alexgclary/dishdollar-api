@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { shoppingListStorage } from '@/utils/shoppingListStorage';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Clock, Users, DollarSign, Heart, Plus, Minus, ShoppingCart, ChefHat, Leaf, Calendar, Copy, Check, ListPlus, RefreshCw, Zap, Store, ExternalLink, Maximize2, X } from 'lucide-react';
+import { ArrowLeft, Clock, Users, DollarSign, Heart, Plus, Minus, ShoppingCart, ChefHat, Leaf, Calendar, Copy, Check, ListPlus, RefreshCw, Zap, Store, ExternalLink, Maximize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -300,7 +300,11 @@ export default function RecipeDetails() {
               <Users className="w-5 h-5" /><span>{servings} servings</span>
             </div>
             <div className="flex items-center gap-2 bg-green-500 px-4 py-2 rounded-full font-semibold">
-              <DollarSign className="w-5 h-5" /><span>${totalCost.toFixed(2)} total</span>
+              <DollarSign className="w-5 h-5" />
+              <span>
+                {hasLivePrices ? '' : '~'}${totalCost.toFixed(2)} total
+              </span>
+              {hasLivePrices && <Zap className="w-4 h-4" />}
             </div>
           </div>
         </div>
@@ -423,10 +427,15 @@ export default function RecipeDetails() {
                         Live prices from {profileData?.preferred_store || 'Kroger'}
                       </p>
                     ) : (
-                      <p className="text-xs text-gray-500 flex items-center gap-1">
-                        <Store className="w-3 h-3" />
-                        Estimated prices
-                      </p>
+                      <div>
+                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                          <Store className="w-3 h-3" />
+                          Estimated prices
+                        </p>
+                        <p className="text-[10px] text-gray-400 mt-1">
+                          Actual prices may vary. Click "Get Live Prices" for current store prices.
+                        </p>
+                      </div>
                     )}
                   </div>
 

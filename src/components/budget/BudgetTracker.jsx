@@ -2,7 +2,6 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { DollarSign, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 
 export default function BudgetTracker({ budget, spent, budgetType, daysRemaining }) {
   const remaining = budget - spent;

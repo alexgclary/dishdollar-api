@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Store, ChevronDown, Check, MapPin } from 'lucide-react';
+import { Store, Check } from 'lucide-react';
 import {
   Select,
   SelectContent,

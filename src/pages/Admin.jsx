@@ -4,7 +4,7 @@ import { createPageUrl } from '@/utils';
 import { auth, entities, supabase, isSupabaseConfigured } from '@/services';
 import { motion } from 'framer-motion';
 import {
-  ArrowLeft, Users, ChefHat, Calendar, DollarSign,
+  ArrowLeft, Users, ChefHat, Calendar,
   TrendingUp, RefreshCw, Shield, Database, Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';

@@ -193,13 +193,11 @@ export default function RecipeCard({ recipe, onSave, isSaved, onClick, household
             <DollarSign className="w-4 h-4 text-green-600" />
             <div className="flex flex-col items-end">
               <span className="font-semibold text-green-600">
-                ${scaledCost.toFixed(2)}
+                ~${scaledCost.toFixed(2)}
               </span>
-              {hasPantryDeduction && (
-                <span className="text-[10px] text-gray-400 line-through">
-                  ${originalCost.toFixed(2)}
-                </span>
-              )}
+              <span className="text-[10px] text-gray-400">
+                {hasPantryDeduction ? `was ~$${originalCost.toFixed(2)}` : 'est.'}
+              </span>
             </div>
           </div>
         </div>

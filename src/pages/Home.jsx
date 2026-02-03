@@ -730,16 +730,33 @@ export default function Home() {
   });
 
   // Personalized recipes (matching user preferences)
-  const personalizedRecipes = filteredRecipes.filter(recipe => {
-    if (!profileData?.cuisines?.length && !profileData?.dietary_restrictions?.length) return true;
-    
-    const matchesCuisine = !profileData.cuisines?.length || 
-      recipe.cuisines?.some(c => profileData.cuisines.includes(c));
-    const matchesDiet = !profileData.dietary_restrictions?.length ||
-      profileData.dietary_restrictions.includes('No Restrictions') ||
-      recipe.diets?.some(d => profileData.dietary_restrictions.includes(d));
-    return matchesCuisine || matchesDiet;
-  });
+  // Sort by relevance: recipes matching user's cuisines appear first
+  const personalizedRecipes = filteredRecipes
+    .filter(recipe => {
+      // If user has no preferences, show all recipes
+      if (!profileData?.cuisines?.length && !profileData?.dietary_restrictions?.length) return true;
+      
+      // Check if recipe matches user's cuisine preferences
+      const matchesCuisine = !profileData.cuisines?.length || 
+        recipe.cuisines?.some(c => profileData.cuisines.includes(c));
+      
+      // Check if recipe matches user's dietary restrictions
+      // If user selected "No Restrictions", all diets are acceptable
+      const matchesDiet = !profileData.dietary_restrictions?.length ||
+        profileData.dietary_restrictions.includes('No Restrictions') ||
+        profileData.dietary_restrictions.length === 0 ||
+        recipe.diets?.length === 0 || // Recipes with no diet tags are acceptable
+        recipe.diets?.some(d => profileData.dietary_restrictions.includes(d));
+      
+      // Recipe must match cuisine preferences (if set) AND be diet-compatible
+      return matchesCuisine && matchesDiet;
+    })
+    .sort((a, b) => {
+      // Prioritize recipes that match user's cuisines
+      const aMatchesCuisine = a.cuisines?.some(c => profileData?.cuisines?.includes(c)) ? 1 : 0;
+      const bMatchesCuisine = b.cuisines?.some(c => profileData?.cuisines?.includes(c)) ? 1 : 0;
+      return bMatchesCuisine - aMatchesCuisine;
+    });
 
   // Explore recipes (outside user preferences for discovery)
   const exploreRecipes = filteredRecipes.filter(recipe => {
