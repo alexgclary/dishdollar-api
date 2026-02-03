@@ -17,15 +17,12 @@ A recipe and meal planning app that helps users discover healthy, affordable rec
    npm install
    ```
 
-3. Create an `.env.local` file (optional - app works in demo mode without these):
+3. Copy the environment example file:
+   ```bash
+   cp .env.example .env.local
    ```
-   # Supabase Configuration (optional)
-   VITE_SUPABASE_URL=your_supabase_url
-   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 
-   # Backend API (optional)
-   VITE_API_BASE_URL=your_heroku_backend_url
-   ```
+4. Configure your environment variables (see [Environment Variables](#environment-variables) section)
 
 4. Run the development server:
    ```bash
@@ -45,6 +42,57 @@ For production, configure Supabase for:
 - User authentication
 - Data persistence
 - Cross-device sync
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VITE_SUPABASE_URL` | No* | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | No* | Supabase anonymous key |
+| `VITE_INSTACART_API_KEY` | No | Instacart Developer Platform API key |
+
+*App runs in demo mode (localStorage) if Supabase is not configured.
+
+---
+
+## Integrations
+
+### Instacart Developer Platform
+
+The Instacart integration enables shoppable recipe pages, nearby retailer lookup, and affiliate revenue.
+
+#### Features
+- **Shoppable Recipes**: One-click "Add to Cart" for all ingredients
+- **Nearby Retailers**: Find stores with Instacart delivery
+- **Affiliate Revenue**: 5% commission on completed orders
+
+#### Setup
+
+1. **Apply for API Access**: [Instacart Developer Platform](https://www.instacart.com/company/business/developers)
+2. **Build Integration**: Use `src/services/instacart.js`
+3. **Add API Key**: Set `VITE_INSTACART_API_KEY` in `.env.local`
+
+#### Usage
+
+```javascript
+import { createShoppableRecipe, getNearbyRetailers } from '@/services/instacart';
+
+// Create shoppable recipe page
+const { recipe_url } = await createShoppableRecipe(recipe, {
+  linkback_url: 'https://dishdollar.com/recipe/123'
+});
+
+// Find nearby stores
+const { retailers } = await getNearbyRetailers({ postal_code: '80202' });
+```
+
+See [INSTACART_ONBOARDING.md](./INSTACART_ONBOARDING.md) for detailed setup instructions.
+
+### Kroger API (Fallback)
+
+Real-time pricing from Kroger & affiliated stores (King Soopers, Ralphs, Fred Meyer, etc.). Used as primary pricing source and fallback when Instacart is unavailable.
+
+---
 
 ## Deployment
 
