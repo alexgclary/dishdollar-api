@@ -251,14 +251,59 @@ export default function RecipeDetails() {
   };
 
   const handleShopWithInstacart = async () => {
+    if (!recipe) return;
+
     setIsInstacartLoading(true);
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setIsInstacartLoading(false);
-    toast({
-      title: "Coming Soon!",
-      description: "Instacart integration coming soon! You'll be able to order ingredients directly.",
-    });
+    try {
+      const API_BASE = 'https://budgetbite-api-69cb51842c10.herokuapp.com';
+
+      // Get shopping items (excludes pantry items, applies serving scale)
+      const shoppingItems = getShoppingItems();
+
+      // Build ingredients array for Instacart
+      const ingredients = shoppingItems.map(item => ({
+        name: item.name,
+        quantity: parseFloat(item.scaledAmount) || item.amount || 1,
+        unit: item.unit || '',
+        display_text: `${item.scaledAmount} ${item.unit} ${item.name}`.trim()
+      }));
+
+      const response = await fetch(`${API_BASE}/api/instacart/recipe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipe_id: recipe.id,
+          title: recipe.title,
+          image_url: recipe.image_url,
+          ingredients: ingredients,
+          instructions: recipe.instructions,
+          servings: servings,
+          cooking_time: (recipe.prep_time || 0) + (recipe.cook_time || 0)
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.products_link_url) {
+        // Redirect to Instacart recipe page
+        window.open(data.products_link_url, '_blank');
+        toast({
+          title: "Opening Instacart",
+          description: "Your recipe cart is ready! Complete your order on Instacart.",
+        });
+      } else {
+        throw new Error(data.error || 'Failed to create Instacart cart');
+      }
+    } catch (error) {
+      console.error('Instacart error:', error);
+      toast({
+        title: "Unable to connect to Instacart",
+        description: error.message || "Please try again later.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsInstacartLoading(false);
+    }
   };
 
   const isSaved = savedRecipes.some(sr => sr.recipe_id === recipe?.id);

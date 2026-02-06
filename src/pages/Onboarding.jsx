@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { auth, entities } from '@/services';
 import { useNavigate } from 'react-router-dom';
@@ -16,6 +16,7 @@ import SearchablePillSelector from '@/components/onboarding/SearchablePillSelect
 import AppIntroModal from '@/components/onboarding/AppIntroModal';
 import { FloatingVegetables, WavyBackground } from '@/components/ui/DecorativeElements';
 import { US_STATES } from '@/utils/usStates';
+import InstacartStoreSelector from '@/components/stores/InstacartStoreSelector';
 
 // Store data with regions for smarter recommendations
 const storeData = [
@@ -38,20 +39,6 @@ const storeData = [
   { name: 'Grocery Outlet', regions: ['west'] },
   { name: 'Other', nationwide: true }
 ];
-
-// Region mapping by state
-const stateRegions = {
-  'ME': 'northeast', 'NH': 'northeast', 'VT': 'northeast', 'MA': 'northeast', 'RI': 'northeast', 'CT': 'northeast',
-  'NY': 'northeast', 'NJ': 'mid-atlantic', 'PA': 'mid-atlantic', 'DE': 'mid-atlantic', 'MD': 'mid-atlantic', 'DC': 'mid-atlantic',
-  'VA': 'mid-atlantic', 'WV': 'mid-atlantic',
-  'NC': 'southeast', 'SC': 'southeast', 'GA': 'southeast', 'FL': 'southeast', 'AL': 'southeast', 'MS': 'southeast',
-  'TN': 'south', 'KY': 'south', 'LA': 'south', 'AR': 'south', 'OK': 'south',
-  'TX': 'texas',
-  'OH': 'midwest', 'IN': 'midwest', 'IL': 'midwest', 'MI': 'midwest', 'WI': 'midwest', 'MN': 'midwest',
-  'IA': 'midwest', 'MO': 'midwest', 'ND': 'midwest', 'SD': 'midwest', 'NE': 'midwest', 'KS': 'midwest',
-  'MT': 'west', 'WY': 'west', 'CO': 'west', 'NM': 'west', 'AZ': 'west', 'UT': 'west', 'NV': 'west', 'ID': 'west',
-  'WA': 'west', 'OR': 'west', 'CA': 'west', 'AK': 'west', 'HI': 'west'
-};
 
 const stores = storeData.map(s => s.name);
 
@@ -320,28 +307,6 @@ export default function Onboarding() {
     }
   };
 
-  // Get stores sorted by relevance to user's region
-  const getSortedStores = useCallback(() => {
-    const userState = formData.location.state?.toUpperCase();
-    const userRegion = stateRegions[userState];
-
-    if (!userRegion) return stores;
-
-    // Sort stores: regional first, then nationwide, then others
-    return [...storeData].sort((a, b) => {
-      const aInRegion = a.regions?.includes(userRegion);
-      const bInRegion = b.regions?.includes(userRegion);
-      const aNationwide = a.nationwide;
-      const bNationwide = b.nationwide;
-
-      if (aInRegion && !bInRegion) return -1;
-      if (!aInRegion && bInRegion) return 1;
-      if (aNationwide && !bNationwide && !bInRegion) return -1;
-      if (!aNationwide && bNationwide && !aInRegion) return 1;
-      return 0;
-    }).map(s => s.name);
-  }, [formData.location.state]);
-
   const handleNext = () => {
     if (validateStep(step)) {
       setStep(s => s + 1);
@@ -563,34 +528,13 @@ export default function Onboarding() {
                   <Store className="w-4 h-4" />
                   Preferred Store *
                 </Label>
-                {formData.location.state && (
-                  <p className="text-xs text-green-600 mb-2">Showing stores popular in your area first</p>
-                )}
-                <div className="grid grid-cols-3 gap-2 mt-2 max-h-48 overflow-y-auto">
-                  {getSortedStores().map((store) => {
-                    const storeInfo = storeData.find(s => s.name === store);
-                    const userRegion = stateRegions[formData.location.state?.toUpperCase()];
-                    const isRegional = storeInfo?.regions?.includes(userRegion);
-
-                    return (
-                      <button
-                        key={store}
-                        onClick={() => updateForm('preferred_store', store)}
-                        className={`px-3 py-2 rounded-xl text-sm font-medium transition-all border-2 relative
-                          ${formData.preferred_store === store
-                            ? 'border-green-500 bg-green-50 text-green-700'
-                            : 'border-gray-200 hover:border-green-300'}`}
-                      >
-                        {store}
-                        {isRegional && formData.preferred_store !== store && (
-                          <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-400 rounded-full" title="Popular in your area" />
-                        )}
-                        {formData.preferred_store === store && (
-                          <Check className="absolute -top-1 -right-1 w-4 h-4 text-green-600" />
-                        )}
-                      </button>
-                    );
-                  })}
+                <div className="mt-2">
+                  <InstacartStoreSelector
+                    zipCode={formData.location.zip_code}
+                    onStoreSelect={(store) => updateForm('preferred_store', store)}
+                    selectedStore={formData.preferred_store}
+                    fallbackStores={stores}
+                  />
                 </div>
                 {errors.preferred_store && (
                   <p className="text-red-500 text-sm mt-1 flex items-center gap-1">

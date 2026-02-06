@@ -4,13 +4,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { motion } from 'framer-motion';
-import { ArrowLeft, User, MapPin, Utensils, Salad, DollarSign, Package, Bell, Save, LogOut, Shield } from 'lucide-react';
+import { ArrowLeft, User, MapPin, Utensils, Salad, DollarSign, Package, Bell, Save, LogOut, Shield, Store, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import PillSelector from '@/components/onboarding/PillSelector';
+import InstacartStoreSelector from '@/components/stores/InstacartStoreSelector';
 
 const stores = [
   'Walmart', 'Kroger', 'Whole Foods', 'Trader Joe\'s', 'Costco',
@@ -49,6 +51,7 @@ export default function Profile() {
   const { toast } = useToast();
   const [formData, setFormData] = useState(null);
   const [profileId, setProfileId] = useState(null);
+  const [isStoreDialogOpen, setIsStoreDialogOpen] = useState(false);
 
   const { data: profileData, isLoading } = useQuery({
     queryKey: ['userProfile'],
@@ -232,20 +235,53 @@ export default function Profile() {
               </div>
               <div>
                 <Label>Preferred Store</Label>
-                <div className="grid grid-cols-3 gap-2 mt-2">
-                  {stores.map((store) => (
-                    <button
-                      key={store}
-                      onClick={() => updateForm('preferred_store', store)}
-                      className={`px-3 py-2 rounded-xl text-sm font-medium transition-all border-2
-                        ${formData.preferred_store === store
-                          ? 'border-green-500 bg-green-50 text-green-700'
-                          : 'border-gray-200 hover:border-green-300'}`}
-                    >
-                      {store}
-                    </button>
-                  ))}
-                </div>
+                <button
+                  onClick={() => setIsStoreDialogOpen(true)}
+                  className="w-full mt-2 p-4 rounded-xl border-2 border-gray-200 hover:border-green-400 transition-all flex items-center justify-between group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                      <Store className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-gray-800">
+                        {formData.preferred_store || 'No store selected'}
+                      </p>
+                      <p className="text-sm text-gray-500">Tap to change your preferred store</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-green-500 transition-colors" />
+                </button>
+
+                {/* Store Selection Dialog */}
+                <Dialog open={isStoreDialogOpen} onOpenChange={setIsStoreDialogOpen}>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <Store className="w-5 h-5 text-green-600" />
+                        Select Your Store
+                      </DialogTitle>
+                      <DialogDescription>
+                        Choose your preferred grocery store for pricing and availability.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="mt-4">
+                      <InstacartStoreSelector
+                        zipCode={formData.location?.zip_code}
+                        selectedStore={formData.preferred_store}
+                        fallbackStores={stores}
+                        onStoreSelect={(store) => {
+                          updateForm('preferred_store', store);
+                          setIsStoreDialogOpen(false);
+                          toast({
+                            title: 'Store Updated',
+                            description: `Your preferred store is now ${store}`
+                          });
+                        }}
+                      />
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
             </CardContent>
           </Card>
