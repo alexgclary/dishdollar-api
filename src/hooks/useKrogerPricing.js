@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { hasRealTimePricing, getRecipePricing } from '@/components/utils/pricingDatabase';
 
-const API_BASE = 'https://budgetbite-api-69cb51842c10.herokuapp.com';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://budgetbite-api-69cb51842c10.herokuapp.com';
 
 /**
  * Hook for fetching real-time Kroger pricing for ingredients

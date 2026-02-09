@@ -3,7 +3,7 @@
  * Fetches trending and new recipes from target websites
  */
 
-const API_BASE = 'https://budgetbite-api-69cb51842c10.herokuapp.com';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://budgetbite-api-69cb51842c10.herokuapp.com';
 
 // Target recipe websites for discovery
 export const RECIPE_SOURCES = [

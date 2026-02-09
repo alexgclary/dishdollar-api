@@ -8,9 +8,34 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors());
+// CORS configuration - allow specific origins
+const allowedOrigins = [
+  'https://dishdollar.com',
+  'https://www.dishdollar.com',
+  'http://localhost:5173',
+  'http://localhost:3000'
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    // Also allow any vercel preview URLs
+    if (origin.includes('.vercel.app')) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'), false);
+  },
+  credentials: true
+}));
+
 app.use(express.json());
+
+// Dry run mode for testing (set DRY_RUN=true to log requests instead of calling APIs)
+const DRY_RUN = process.env.DRY_RUN === 'true';
 
 // Kroger API credentials from environment
 const KROGER_CLIENT_ID = process.env.KROGER_CLIENT_ID;
@@ -18,11 +43,10 @@ const KROGER_CLIENT_SECRET = process.env.KROGER_CLIENT_SECRET;
 const KROGER_API_BASE = 'https://api.kroger.com/v1';
 
 // Instacart API configuration
-const INSTACART_ENV = process.env.INSTACART_ENV || 'sandbox';
 const INSTACART_API_KEY = process.env.INSTACART_API_KEY;
-const INSTACART_API_BASE = INSTACART_ENV === 'production'
-  ? 'https://connect.instacart.com/idp/v1'
-  : 'https://connect.dev.instacart.tools/idp/v1';
+const INSTACART_API_URL = process.env.INSTACART_API_URL || 'https://connect.dev.instacart.tools';
+const INSTACART_API_BASE = `${INSTACART_API_URL}/idp/v1`;
+const PARTNER_LINKBACK_URL = 'https://dishdollar.com';
 
 // Supabase configuration
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -321,113 +345,127 @@ async function cacheInstacartUrl(recipeId, ingredientsHash, servings, instacartU
 /**
  * Clean ingredient name for Instacart product search
  * Removes quantities, measurements, and preparation instructions
+ * Uses word boundaries (\b) to avoid matching partial words
  */
-function cleanIngredientName(displayText) {
-  if (!displayText || typeof displayText !== 'string') {
-    return displayText || '';
+function cleanIngredientName(name) {
+  if (!name || typeof name !== 'string') {
+    return name || '';
   }
 
-  return displayText
+  return name
     .replace(/^[\d\s\/.,-]+/, '')                    // Remove leading numbers/fractions
     .replace(/\(.*?\)/g, '')                         // Remove parentheses content
     .replace(/,.*$/, '')                             // Remove everything after comma
-    .replace(/for serving|to serve|optional|garnish|to taste|as needed/gi, '')
-    .replace(/fresh|frozen|canned|chopped|diced|minced|sliced|shredded|crushed|ground/gi, '')
-    .replace(/boneless|skinless|peeled|deveined/gi, '')
-    .replace(/cups?|tablespoons?|tbsp|teaspoons?|tsp|ounces?|oz|pounds?|lbs?|lb|grams?|g|ml|liters?|cloves?|cans?|packages?|pieces?|slices?|heads?|bunches?|stalks?|sprigs?|large|medium|small|whole|pinch(es)?|dash(es)?/gi, '')
+    .replace(/\b(for serving|to serve|optional|garnish|to taste|as needed)\b/gi, '')
+    .replace(/\b(fresh|frozen|canned|chopped|diced|minced|sliced|shredded|crushed|ground)\b/gi, '')
+    .replace(/\b(boneless|skinless|peeled|deveined)\b/gi, '')
+    .replace(/\b(cups?|tablespoons?|tbsp|teaspoons?|tsp|ounces?|oz|pounds?|lbs?|lb|grams?|ml|liters?|cloves?|cans?|packages?|pieces?|slices?|heads?|bunches?|stalks?|sprigs?|large|medium|small|whole|pinch(?:es)?|dash(?:es)?)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 /**
  * Map ingredients to Instacart format
+ * Input: [{ name, quantity, unit }]
+ * Output: [{ name, measurements: [{ quantity, unit }] }]
  */
 function mapIngredientsToInstacart(ingredients) {
   return ingredients.map(ing => {
-    const displayText = ing.display_text ||
-      `${ing.amount || ing.quantity || ''} ${ing.unit || ''} ${ing.name}`.trim();
-
-    const measurements = [];
-
-    // Add primary measurement
-    if (ing.quantity || ing.amount) {
-      measurements.push({
-        quantity: parseFloat(ing.quantity || ing.amount) || 1,
-        unit: ing.unit || 'unit'
-      });
-    }
+    const cleanedName = cleanIngredientName(ing.name) || ing.name;
+    const quantity = parseFloat(ing.quantity || ing.amount || 1) || 1;
+    const unit = ing.unit || 'each';
 
     return {
-      name: cleanIngredientName(displayText) || ing.name,
-      display_text: displayText,
-      measurements: measurements.length > 0 ? measurements : [{ quantity: 1, unit: 'unit' }]
+      name: cleanedName,
+      measurements: [{ quantity, unit }]
     };
   });
 }
 
-// POST /api/instacart/recipe - Create shoppable recipe page on Instacart
+/**
+ * Map items to Instacart shopping list format
+ * Input: [{ name, quantity, unit }]
+ * Output: [{ name, quantity, unit }]
+ */
+function mapItemsToInstacartList(items) {
+  return items.map(item => {
+    const cleanedName = cleanIngredientName(item.name) || item.name;
+    return {
+      name: cleanedName,
+      quantity: parseFloat(item.quantity || 1) || 1,
+      unit: item.unit || 'each'
+    };
+  });
+}
+
+// ============================================
+// POST /api/instacart/recipe
+// Creates a shoppable recipe page on Instacart
+// ============================================
 app.post('/api/instacart/recipe', async (req, res) => {
   try {
     const { title, image_url, ingredients, instructions, servings, cooking_time, recipe_id } = req.body;
 
+    // Validate required fields
     if (!title || !ingredients || !Array.isArray(ingredients)) {
       return res.status(400).json({
-        success: false,
         error: 'title and ingredients array are required'
       });
     }
 
     if (!INSTACART_API_KEY) {
       return res.status(500).json({
-        success: false,
         error: 'Instacart API key not configured'
       });
     }
 
     const servingsCount = servings || 4;
 
-    // Generate hash from ingredients for cache lookup
-    const ingredientsHash = generateIngredientsHash(ingredients);
-
-    // Check cache for existing URL
+    // Check cache for existing URL (if recipe_id provided)
     if (recipe_id) {
+      const ingredientsHash = generateIngredientsHash(ingredients);
       const cachedUrl = await getCachedInstacartUrl(recipe_id, ingredientsHash, servingsCount);
       if (cachedUrl) {
-        console.log(`Cache hit for recipe ${recipe_id}, returning cached Instacart URL`);
-        return res.json({
-          success: true,
-          products_link_url: cachedUrl,
-          cached: true
-        });
+        console.log(`[Instacart] Cache hit for recipe ${recipe_id}`);
+        return res.json({ url: cachedUrl, cached: true });
       }
-      console.log(`Cache miss for recipe ${recipe_id}, calling Instacart API`);
     }
 
     // Map ingredients to Instacart format
     const instacartIngredients = mapIngredientsToInstacart(ingredients);
 
-    // Build the request body for Instacart
+    // Build request body for Instacart API
     const requestBody = {
       title: title,
-      image_url: image_url || null,
+      image_url: image_url || undefined,
       servings: servingsCount,
       ingredients: instacartIngredients,
       landing_page_configuration: {
-        partner_linkback_url: 'https://www.dishdollar.com',
-        enable_pantry_items: true
+        partner_linkback_url: PARTNER_LINKBACK_URL
       }
     };
 
-    // Add optional fields if provided
+    // Add optional fields
     if (cooking_time) {
       requestBody.cooking_time = cooking_time;
     }
-
-    if (instructions && Array.isArray(instructions)) {
+    if (instructions && Array.isArray(instructions) && instructions.length > 0) {
       requestBody.instructions = instructions;
     }
 
-    console.log(`Creating Instacart recipe page for "${title}" (${INSTACART_ENV} environment)`);
+    // Log the request that would be made
+    console.log('[Instacart] POST /idp/v1/products/recipe');
+    console.log('[Instacart] Request body:', JSON.stringify(requestBody, null, 2));
+
+    // DRY_RUN mode - just log, don't call API
+    if (DRY_RUN) {
+      console.log('[Instacart] DRY_RUN mode - skipping actual API call');
+      return res.json({
+        url: 'https://www.instacart.com/store/recipes/dry-run-test',
+        dry_run: true,
+        request_body: requestBody
+      });
+    }
 
     // Call Instacart API
     const response = await fetch(`${INSTACART_API_BASE}/products/recipe`, {
@@ -446,41 +484,213 @@ app.post('/api/instacart/recipe', async (req, res) => {
     try {
       responseData = JSON.parse(responseText);
     } catch (e) {
-      console.error('Failed to parse Instacart response:', responseText);
+      console.error('[Instacart] Failed to parse response:', responseText);
       return res.status(500).json({
-        success: false,
         error: 'Invalid response from Instacart API'
       });
     }
 
     if (!response.ok) {
-      console.error('Instacart API error:', response.status, responseData);
+      console.error('[Instacart] API error:', response.status, responseData);
       return res.status(response.status).json({
-        success: false,
         error: responseData.error || responseData.message || `Instacart API error: ${response.status}`,
         details: responseData
       });
     }
 
-    console.log('Instacart recipe page created successfully:', responseData);
+    console.log('[Instacart] Recipe page created:', responseData.products_link_url);
 
     // Cache the URL if we have a recipe_id
     if (recipe_id && responseData.products_link_url) {
+      const ingredientsHash = generateIngredientsHash(ingredients);
       await cacheInstacartUrl(recipe_id, ingredientsHash, servingsCount, responseData.products_link_url);
     }
 
+    // Return simplified response
     res.json({
-      success: true,
-      products_link_url: responseData.products_link_url,
-      cached: false,
-      data: responseData
+      url: responseData.products_link_url,
+      cached: false
     });
+
   } catch (error) {
-    console.error('Instacart recipe creation error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
+    console.error('[Instacart] Recipe creation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// POST /api/instacart/shopping-list
+// Creates a shopping list page on Instacart
+// ============================================
+app.post('/api/instacart/shopping-list', async (req, res) => {
+  try {
+    const { title, items } = req.body;
+
+    // Validate required fields
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        error: 'items array is required and must not be empty'
+      });
+    }
+
+    if (!INSTACART_API_KEY) {
+      return res.status(500).json({
+        error: 'Instacart API key not configured'
+      });
+    }
+
+    // Map items to Instacart format
+    const lineItems = mapItemsToInstacartList(items);
+
+    // Build request body for Instacart API
+    const requestBody = {
+      title: title || 'Shopping List',
+      link_type: 'shopping_list',
+      line_items: lineItems,
+      landing_page_configuration: {
+        partner_linkback_url: PARTNER_LINKBACK_URL
+      }
+    };
+
+    // Log the request
+    console.log('[Instacart] POST /idp/v1/products/products_link');
+    console.log('[Instacart] Request body:', JSON.stringify(requestBody, null, 2));
+
+    // DRY_RUN mode
+    if (DRY_RUN) {
+      console.log('[Instacart] DRY_RUN mode - skipping actual API call');
+      return res.json({
+        url: 'https://www.instacart.com/store/lists/dry-run-test',
+        dry_run: true,
+        request_body: requestBody
+      });
+    }
+
+    // Call Instacart API
+    const response = await fetch(`${INSTACART_API_BASE}/products/products_link`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${INSTACART_API_KEY}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
     });
+
+    const responseText = await response.text();
+    let responseData;
+
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (e) {
+      console.error('[Instacart] Failed to parse response:', responseText);
+      return res.status(500).json({
+        error: 'Invalid response from Instacart API'
+      });
+    }
+
+    if (!response.ok) {
+      console.error('[Instacart] API error:', response.status, responseData);
+      return res.status(response.status).json({
+        error: responseData.error || responseData.message || `Instacart API error: ${response.status}`,
+        details: responseData
+      });
+    }
+
+    console.log('[Instacart] Shopping list created:', responseData.products_link_url);
+
+    res.json({
+      url: responseData.products_link_url
+    });
+
+  } catch (error) {
+    console.error('[Instacart] Shopping list creation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// GET /api/instacart/retailers
+// Gets nearby retailers available through Instacart
+// ============================================
+app.get('/api/instacart/retailers', async (req, res) => {
+  try {
+    const { postal_code } = req.query;
+
+    if (!postal_code) {
+      return res.status(400).json({
+        error: 'postal_code query parameter is required'
+      });
+    }
+
+    if (!INSTACART_API_KEY) {
+      return res.status(500).json({
+        error: 'Instacart API key not configured'
+      });
+    }
+
+    const url = `${INSTACART_API_BASE}/retailers?postal_code=${encodeURIComponent(postal_code)}&country_code=US`;
+
+    // Log the request
+    console.log('[Instacart] GET /idp/v1/retailers');
+    console.log('[Instacart] URL:', url);
+
+    // DRY_RUN mode
+    if (DRY_RUN) {
+      console.log('[Instacart] DRY_RUN mode - returning mock retailers');
+      return res.json({
+        retailers: [
+          { retailer_key: 'king_soopers', name: 'King Soopers', retailer_logo_url: 'https://example.com/logo.png' },
+          { retailer_key: 'safeway', name: 'Safeway', retailer_logo_url: 'https://example.com/logo.png' },
+          { retailer_key: 'whole_foods', name: 'Whole Foods', retailer_logo_url: 'https://example.com/logo.png' }
+        ],
+        dry_run: true
+      });
+    }
+
+    // Call Instacart API
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${INSTACART_API_KEY}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    const responseText = await response.text();
+    let responseData;
+
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (e) {
+      console.error('[Instacart] Failed to parse response:', responseText);
+      return res.status(500).json({
+        error: 'Invalid response from Instacart API'
+      });
+    }
+
+    if (!response.ok) {
+      console.error('[Instacart] API error:', response.status, responseData);
+      return res.status(response.status).json({
+        error: responseData.error || responseData.message || `Instacart API error: ${response.status}`,
+        details: responseData
+      });
+    }
+
+    // Map response to our format
+    const retailers = (responseData.retailers || []).map(r => ({
+      retailer_key: r.retailer_key || r.id,
+      name: r.name,
+      retailer_logo_url: r.retailer_logo_url || r.logo_url
+    }));
+
+    console.log(`[Instacart] Found ${retailers.length} retailers for postal code ${postal_code}`);
+
+    res.json({ retailers });
+
+  } catch (error) {
+    console.error('[Instacart] Retailers lookup error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -1133,11 +1343,25 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    version: '3.2.0',
-    features: ['recipe-parsing', 'kroger-pricing', 'product-search', 'recipe-discovery', 'price-search', 'instacart-recipe', 'instacart-caching'],
+    version: '4.0.0',
+    dry_run: DRY_RUN,
+    features: [
+      'recipe-parsing',
+      'kroger-pricing',
+      'product-search',
+      'recipe-discovery',
+      'price-search',
+      'instacart-recipe',
+      'instacart-shopping-list',
+      'instacart-retailers',
+      'instacart-caching'
+    ],
     instacart: {
       configured: !!INSTACART_API_KEY,
-      environment: INSTACART_ENV
+      api_url: INSTACART_API_URL
+    },
+    kroger: {
+      configured: !!(KROGER_CLIENT_ID && KROGER_CLIENT_SECRET)
     },
     supabase: {
       configured: !!supabase,
@@ -1148,7 +1372,8 @@ app.get('/api/health', (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`DishDollar API v3.2.0 running on port ${PORT}`);
-  console.log(`Environment: ${INSTACART_ENV}`);
+  console.log(`DishDollar API v4.0.0 running on port ${PORT}`);
+  console.log(`Instacart API: ${INSTACART_API_URL}`);
+  console.log(`Dry run mode: ${DRY_RUN ? 'ENABLED' : 'disabled'}`);
   console.log(`Supabase caching: ${supabase ? 'enabled' : 'disabled'}`);
 });

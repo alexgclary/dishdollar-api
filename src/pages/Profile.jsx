@@ -12,7 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import PillSelector from '@/components/onboarding/PillSelector';
-import InstacartStoreSelector from '@/components/stores/InstacartStoreSelector';
+import InstacartStoreSelector, { KROGER_FAMILY_RETAILERS } from '@/components/stores/InstacartStoreSelector';
+import KrogerLocationSelector from '@/components/stores/KrogerLocationSelector';
 
 const stores = [
   'Walmart', 'Kroger', 'Whole Foods', 'Trader Joe\'s', 'Costco',
@@ -52,6 +53,7 @@ export default function Profile() {
   const [formData, setFormData] = useState(null);
   const [profileId, setProfileId] = useState(null);
   const [isStoreDialogOpen, setIsStoreDialogOpen] = useState(false);
+  const [showKrogerLocations, setShowKrogerLocations] = useState(false);
 
   const { data: profileData, isLoading } = useQuery({
     queryKey: ['userProfile'],
@@ -71,6 +73,13 @@ export default function Profile() {
     if (profileData) {
       setFormData(profileData);
       setProfileId(profileData.id);
+      // Check if current store is a Kroger-family store
+      if (profileData.preferred_retailer_key) {
+        const isKroger = KROGER_FAMILY_RETAILERS.includes(
+          profileData.preferred_retailer_key.toLowerCase()
+        );
+        setShowKrogerLocations(isKroger);
+      }
     }
   }, [profileData]);
 
@@ -234,7 +243,7 @@ export default function Profile() {
                 />
               </div>
               <div>
-                <Label>Preferred Store</Label>
+                <Label>Preferred Store for Instacart</Label>
                 <button
                   onClick={() => setIsStoreDialogOpen(true)}
                   className="w-full mt-2 p-4 rounded-xl border-2 border-gray-200 hover:border-green-400 transition-all flex items-center justify-between group"
@@ -247,7 +256,16 @@ export default function Profile() {
                       <p className="font-semibold text-gray-800">
                         {formData.preferred_store || 'No store selected'}
                       </p>
-                      <p className="text-sm text-gray-500">Tap to change your preferred store</p>
+                      <p className="text-sm text-gray-500">
+                        {formData.kroger_location_id
+                          ? 'Specific store selected for pricing'
+                          : 'Tap to change your preferred store'}
+                      </p>
+                      {formData.preferred_retailer_key && (
+                        <p className="text-xs text-green-600 mt-0.5">
+                          Instacart delivery available
+                        </p>
+                      )}
                     </div>
                   </div>
                   <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-green-500 transition-colors" />
@@ -255,30 +273,65 @@ export default function Profile() {
 
                 {/* Store Selection Dialog */}
                 <Dialog open={isStoreDialogOpen} onOpenChange={setIsStoreDialogOpen}>
-                  <DialogContent className="sm:max-w-md">
+                  <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle className="flex items-center gap-2">
                         <Store className="w-5 h-5 text-green-600" />
                         Select Your Store
                       </DialogTitle>
                       <DialogDescription>
-                        Choose your preferred grocery store for pricing and availability.
+                        Choose your preferred grocery store for Instacart delivery.
                       </DialogDescription>
                     </DialogHeader>
-                    <div className="mt-4">
+                    <div className="mt-4 space-y-4">
                       <InstacartStoreSelector
                         zipCode={formData.location?.zip_code}
                         selectedStore={formData.preferred_store}
+                        selectedRetailerKey={formData.preferred_retailer_key}
                         fallbackStores={stores}
-                        onStoreSelect={(store) => {
-                          updateForm('preferred_store', store);
-                          setIsStoreDialogOpen(false);
-                          toast({
-                            title: 'Store Updated',
-                            description: `Your preferred store is now ${store}`
-                          });
+                        onStoreSelect={(retailer) => {
+                          updateForm('preferred_store', retailer.name);
+                          updateForm('preferred_retailer_key', retailer.retailer_key);
+
+                          // Show Kroger location selector if it's a Kroger-family store
+                          if (retailer.isKrogerFamily) {
+                            setShowKrogerLocations(true);
+                          } else {
+                            setShowKrogerLocations(false);
+                            updateForm('kroger_location_id', '');
+                            setIsStoreDialogOpen(false);
+                            toast({
+                              title: 'Store Updated',
+                              description: `Your preferred store is now ${retailer.name}`
+                            });
+                          }
                         }}
                       />
+
+                      {/* Kroger Location Selector */}
+                      {showKrogerLocations && formData.preferred_store && (
+                        <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                          <KrogerLocationSelector
+                            zipCode={formData.location?.zip_code}
+                            storeName={formData.preferred_store}
+                            selectedLocationId={formData.kroger_location_id}
+                            onLocationSelect={(location) => {
+                              if (location) {
+                                updateForm('kroger_location_id', location.locationId);
+                              } else {
+                                updateForm('kroger_location_id', '');
+                              }
+                              setIsStoreDialogOpen(false);
+                              toast({
+                                title: 'Store Updated',
+                                description: location
+                                  ? `Your store is now ${location.name}`
+                                  : `Your preferred store is now ${formData.preferred_store}`
+                              });
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   </DialogContent>
                 </Dialog>

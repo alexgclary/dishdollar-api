@@ -2,81 +2,75 @@
 
 ## Project Overview
 
-**DishDollar** is a recipe and meal planning app that helps users discover healthy, affordable recipes and purchase ingredients at real-time prices from their preferred grocery stores. The app bridges the gap between recipe discovery and practical grocery shopping by providing intelligent ingredient parsing, smart product matching, and direct store integration.
+**DishDollar** is a recipe discovery and meal planning app that helps users find recipes and purchase ingredients from their preferred grocery stores. The app bridges recipe discovery with practical grocery shopping by generating shoppable links through Instacart's Developer Platform.
 
-### Core Value Proposition
-- Parse recipe URLs and extract ingredient lists with preserved measurements
-- Connect users to actual grocery products with current pricing from local stores
-- Recommend high-quality, fresh ingredients at affordable prices
-- Account for pantry items users already have
-- Support multiple dietary preferences and cuisine types
-
----
-
-## Current Architecture
-
-### Tech Stack
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| Frontend | React/Vite + Tailwind CSS | User interface |
-| Hosting (Frontend) | Vercel | Frontend deployment |
-| Backend | Heroku | API services, Kroger integration |
-| Database | Supabase (PostgreSQL) | Auth, user data, recipes, meal plans |
-| Version Control | GitHub | Single repository (monorepo structure assumed) |
-| AI Layer | Claude Opus 4.5 | Ingredient parsing, recipe discovery |
-
-### Current Database Schema (Supabase)
-- User profiles (with row-level security)
-- Recipes
-- Meal plans
-- Saved recipes
-- Budget tracking
-- Shopping lists
-- Pantry items
-
-### Existing Integrations
-- **Kroger API**: General API key for product searches (keep as fallback)
+### Core Features
+- Parse recipe URLs and extract structured ingredient lists
+- Generate Instacart shopping links for any recipe
+- Connect users to their preferred grocery retailers
+- Support for Kroger-family stores with direct pricing
+- Meal planning and shopping list management
+- Pantry tracking to avoid duplicate purchases
 
 ---
 
-## Development Goals
+## Tech Stack
 
-### Primary Goals
-1. **Multi-Store Integration**: Allow users to select their preferred grocery store (Kroger, Whole Foods, Walmart, Safeway, Costco, Publix, etc.)
-2. **Real-Time Pricing**: Display current prices for ingredients when discovering recipes
-3. **Smart Recipe Discovery**: AI-powered system that finds healthy, affordable recipes based on:
-   - User's dietary preferences
-   - Items already in their pantry
-   - Budget constraints
+| Layer | Technology | Deployment |
+|-------|------------|------------|
+| Frontend | React 18 + Vite + Tailwind CSS | Vercel |
+| Backend | Node.js + Express | Heroku |
+| Database | Supabase (PostgreSQL) | Supabase Cloud |
+| Auth | Supabase Auth | Supabase Cloud |
+| Repository | GitHub (DishDollar-API) | Connected to Vercel |
 
-### Secondary Goals
-4. **Recipe Website Scanning**: Daily automated scanning of top recipe websites for new content
-5. **Fresh Ingredient Preference**: Smart filtering to prioritize fresh butcher/produce items over pre-packaged when user prefers
-6. **Monetization**: Instacart affiliate program integration for commission on completed orders
+### Frontend Dependencies
+- React Router v6 for navigation
+- TanStack Query for data fetching
+- shadcn/ui component library
+- Framer Motion for animations
+- Lucide React for icons
+
+### Backend Dependencies
+- Express.js for API routes
+- Cheerio for HTML parsing (recipe extraction)
+- @supabase/supabase-js for caching
 
 ---
 
-## Grocery Store API Strategy
+## API Integrations
 
-### PRIMARY: Instacart Developer Platform (IDP)
+### Instacart Developer Platform (IDP)
 
-**This is the recommended primary integration.** IDP provides access to 85,000+ stores across 1,500+ retail banners in the US and Canada.
+**Important**: Instacart IDP generates **links** to Instacart Marketplace pages. It does NOT:
+- Provide pricing data
+- Create carts directly in our app
+- Show individual store locations (only retailer brands)
+- Embed checkout in our app
 
-#### Why Instacart IDP
-- Single API integration covers ALL target stores (Kroger, Whole Foods, Walmart, Safeway, Costco, Publix, and more)
-- Purpose-built Recipe API with ingredient-to-product matching
-- Built-in pantry exclusion feature (`enable_pantry_items`)
-- Health filters: ORGANIC, GLUTEN_FREE, FAT_FREE, VEGAN, KOSHER, SUGAR_FREE, LOW_FAT
-- Affiliate program for monetization (5% commission on cart value, 7-day attribution window)
-- Trusted by NYT Cooking, WeightWatchers, Jow (similar use cases)
+**Current Status**: Development API key (sandbox environment)
 
-#### IDP API Endpoints to Implement
+#### Base URLs
 ```
-POST /idp/v1/products/recipe    # Create shoppable recipe page
-POST /idp/v1/products/list      # Create shopping list
+Development: https://connect.dev.instacart.tools
+Production:  https://connect.instacart.com
 ```
 
-#### Recipe API Request Structure
+#### Authentication
+```
+Authorization: Bearer <INSTACART_API_KEY>
+Content-Type: application/json
+```
+
+#### Endpoints We Use
+
+**1. Create Recipe Page**
+```
+POST /idp/v1/products/recipe
+```
+Creates a shoppable recipe page on Instacart. Returns a URL where users can add all ingredients to their cart.
+
+Request:
 ```json
 {
   "title": "Recipe Name",
@@ -85,617 +79,384 @@ POST /idp/v1/products/list      # Create shopping list
   "cooking_time": 30,
   "ingredients": [
     {
-      "name": "spinach",              // Generic name only
-      "display_text": "1 cup fresh spinach",
+      "name": "chicken breast",
+      "display_text": "2 lbs boneless chicken breast",
       "measurements": [
-        { "quantity": 1, "unit": "cup" },
-        { "quantity": 30, "unit": "gram" }  // Multiple units improve matching
-      ],
-      "filters": {
-        "brand_filters": ["Organic Girl"],
-        "health_filters": ["ORGANIC"]
-      }
+        { "quantity": 2, "unit": "pound" }
+      ]
     }
   ],
   "landing_page_configuration": {
     "partner_linkback_url": "https://dishdollar.com/recipe/123",
-    "enable_pantry_items": true    // CRITICAL: Enables pantry exclusion
+    "enable_pantry_items": true
   }
 }
 ```
 
-#### IDP Onboarding Steps
-1. Apply at https://www.instacart.com/company/business/developers
-2. Build integration & submit demo (avg 19 days)
-3. Receive production API key (1-2 business days after approval)
-4. Join Impact affiliate program (invitation sent after live integration)
-
-#### Monetization via IDP Affiliate
-- **Commission**: 5% of total cart value on completed orders
-- **New Customer Bonus**: Up to $10 CPA for new user signups
-- **Subscription Bonus**: $20 per Instacart+ subscription
-- **Attribution Window**: 7 days from click
-- **Minimum Payout**: $20 (via PayPal or ACH)
-- **Tracking**: Via Impact platform with UTM parameters
-
-### FALLBACK: Kroger API (Already Implemented)
-
-Keep existing Kroger integration as:
-1. Fallback when Instacart is unavailable
-2. Price comparison option for users
-3. Direct store integration without delivery fees
-
-### Store API Availability Summary
-
-| Store | Public API | Recommendation |
-|-------|------------|----------------|
-| Kroger | ✅ Yes | Keep as fallback |
-| Whole Foods | ❌ No | Use Instacart IDP |
-| Walmart | ❌ Deprecated | Use Instacart IDP |
-| Safeway | ❌ No | Use Instacart IDP |
-| Publix | ❌ No | Use Instacart IDP |
-| Costco | ❌ No | Use Instacart IDP |
-
----
-
-## AI Layer Implementation
-
-### Claude Opus 4.5 Integration
-
-Use Claude Opus 4.5 for:
-
-#### 1. Ingredient Name Pre-Processing
-**Problem**: Raw ingredient text like "1/2 tsp freshly ground black pepper" returns incorrect products (e.g., beef patties).
-
-**Solution**: Pre-process ingredients through Claude before product search:
-
-```python
-INGREDIENT_CLEANING_PROMPT = """
-Extract the core ingredient name for grocery product search.
-
-Input: "1/2 tsp freshly ground black pepper"
-Output: {"search_term": "black pepper", "category": "spices", "department": "pantry"}
-
-Input: "2 lbs boneless, skinless chicken breast"
-Output: {"search_term": "chicken breast boneless skinless", "category": "poultry", "department": "meat"}
-
-Input: "1 cup baby spinach, washed"
-Output: {"search_term": "baby spinach", "category": "leafy greens", "department": "produce"}
-
-Rules:
-- Remove quantities, measurements, and preparation instructions
-- Keep essential descriptors (boneless, fresh, organic)
-- Identify product category and store department
-- Return JSON format for structured processing
-"""
-```
-
-#### 2. Ingredient Variation Mapping
-Build a mapping layer for common variations:
-
+Response:
 ```json
 {
-  "ingredient_mappings": {
-    "freshly ground black pepper": "black pepper",
-    "evoo": "extra virgin olive oil",
-    "parm": "parmesan cheese",
-    "veggie broth": "vegetable broth",
-    "greek yogurt plain": "plain greek yogurt"
-  },
-  "category_mappings": {
-    "black pepper": {"category": "spices", "department": "pantry"},
-    "spinach": {"category": "leafy_greens", "department": "produce", "prefer_fresh": true},
-    "chicken breast": {"category": "poultry", "department": "meat", "prefer_fresh": true}
-  }
+  "products_link_url": "https://www.instacart.com/store/recipes/abc123..."
 }
 ```
 
-#### 3. Recipe Discovery & Website Scanning
-Use Claude to:
-- Identify trending recipes from target websites
-- Extract structured recipe data (ingredients, instructions, nutrition)
-- Categorize by cuisine type and dietary preferences
-- Score recipes for health and affordability
-
----
-
-## Smart Product Matching System
-
-### Fresh vs Pre-Packaged Filtering
-
-Implement user preference system in onboarding:
-
-```javascript
-// User preference schema addition
-{
-  "fresh_preference": "fresh_only" | "prefer_fresh" | "no_preference",
-  "departments_to_prefer": ["produce", "meat", "seafood", "deli", "bakery"],
-  "keywords_to_exclude": ["frozen", "pre-packaged", "ready-to-eat", "processed", "canned"]
-}
+**2. Create Shopping List Page**
 ```
-
-### Product Scoring Algorithm
-
-```javascript
-function scoreProduct(product, userPreferences, ingredient) {
-  let score = 100;
-  
-  // Freshness scoring (if user prefers fresh)
-  if (userPreferences.fresh_preference !== "no_preference") {
-    if (ingredient.prefer_fresh) {
-      // Boost fresh department items
-      if (["produce", "meat", "seafood", "deli", "bakery"].includes(product.department)) {
-        score += 30;
-      }
-      // Penalize excluded keywords
-      const lowerName = product.name.toLowerCase();
-      for (const keyword of userPreferences.keywords_to_exclude) {
-        if (lowerName.includes(keyword)) {
-          score -= 50;
-        }
-      }
-    }
-  }
-  
-  // Quality brand preference (from existing logic)
-  const qualityBrands = ["Old El Paso", "McCormick", "Kraft", "Organic Girl", "365", "Boar's Head"];
-  if (qualityBrands.some(brand => product.brand?.includes(brand))) {
-    score += 20;
-  }
-  
-  // Store brand penalty (adjustable)
-  if (product.brand?.toLowerCase().includes("private selection")) {
-    score -= 10;
-  }
-  
-  // Image availability
-  if (product.image_url) {
-    score += 5;
-  }
-  
-  // Price per unit efficiency
-  if (product.price_per_unit) {
-    // Lower price per unit = better value
-    score += Math.max(0, 20 - (product.price_per_unit * 2));
-  }
-  
-  return score;
-}
+POST /idp/v1/products/products_link
 ```
+Creates a shopping list page on Instacart for arbitrary items.
 
-### Minimum Quantity Calculation
-
-When a recipe calls for a specific amount, find the smallest available package:
-
-```javascript
-function findOptimalPackage(ingredient, availableProducts) {
-  const requiredAmount = convertToStandardUnit(ingredient.quantity, ingredient.unit);
-  
-  // Sort by package size (ascending)
-  const sortedProducts = availableProducts
-    .map(p => ({
-      ...p,
-      packageAmount: convertToStandardUnit(p.size, p.sizeUnit),
-      meetsRequirement: convertToStandardUnit(p.size, p.sizeUnit) >= requiredAmount
-    }))
-    .filter(p => p.meetsRequirement)
-    .sort((a, b) => a.packageAmount - b.packageAmount);
-  
-  // Return smallest package that meets requirement
-  return sortedProducts[0] || null;
-}
-```
-
----
-
-## Recipe Website Scraping
-
-### Target Websites (Priority Order)
-
-#### User Favorites
-1. Natasha's Kitchen (natashaskitchen.com)
-2. Half Baked Harvest (halfbakedharvest.com)
-3. Defined Dish (thedefineddish.com)
-4. AllRecipes (allrecipes.com)
-5. Whole30 (whole30.com)
-
-#### Healthy/Budget Focused
-6. Budget Bytes (budgetbytes.com)
-7. Skinnytaste (skinnytaste.com)
-8. Minimalist Baker (minimalistbaker.com)
-9. Love and Lemons (loveandlemons.com)
-10. Cookie and Kate (cookieandkate.com)
-
-#### High-Quality Popular Sites
-11. Pinch of Yum (pinchofyum.com)
-12. Serious Eats (seriouseats.com)
-13. Gimme Some Oven (gimmesomeoven.com)
-14. Simply Recipes (simplyrecipes.com)
-15. Smitten Kitchen (smittenkitchen.com)
-
-#### Plant-Based Specialists
-16. Oh She Glows (ohsheglows.com)
-17. Deliciously Ella (deliciouslyella.com)
-18. A Couple Cooks (acouplecooks.com)
-
-### Scraping Schedule
-- **Daily**: Automated scan of all target websites for new recipes
-- **On-Demand**: User-triggered refresh button (already built)
-
-### Recipe Extraction Schema
-
+Request:
 ```json
 {
-  "source_url": "https://...",
-  "source_site": "halfbakedharvest.com",
-  "title": "Recipe Title",
-  "description": "...",
-  "image_url": "https://...",
-  "prep_time_minutes": 15,
-  "cook_time_minutes": 30,
-  "total_time_minutes": 45,
-  "servings": 4,
-  "cuisine_type": "Mediterranean",
-  "diet_tags": ["gluten-free", "dairy-free"],
-  "ingredients": [
+  "items": [
+    { "name": "milk", "quantity": 1 },
+    { "name": "eggs", "quantity": 12 }
+  ]
+}
+```
+
+Response:
+```json
+{
+  "products_link_url": "https://www.instacart.com/store/lists/xyz789..."
+}
+```
+
+**3. Get Nearby Retailers**
+```
+GET /idp/v1/retailers?postal_code=XXXXX&country_code=US
+```
+Returns retailer brands available in the user's area.
+
+Response:
+```json
+{
+  "retailers": [
     {
-      "original_text": "1 cup baby spinach, washed",
-      "parsed_name": "baby spinach",
-      "quantity": 1,
-      "unit": "cup",
-      "preparation": "washed",
-      "is_optional": false
+      "retailer_key": "king_soopers",
+      "name": "King Soopers",
+      "logo_url": "https://..."
+    },
+    {
+      "retailer_key": "safeway",
+      "name": "Safeway",
+      "logo_url": "https://..."
     }
-  ],
-  "instructions": ["Step 1...", "Step 2..."],
-  "nutrition": {
-    "calories": 350,
-    "protein_g": 25,
-    "carbs_g": 30,
-    "fat_g": 15
-  },
-  "extracted_at": "2025-01-29T00:00:00Z"
+  ]
 }
 ```
 
----
-
-## MCP Server Integration
-
-### Recommended MCP Servers for DishDollar
-
-#### 1. Puppeteer/Playwright (Recipe Scraping)
-**Purpose**: Automate recipe website scraping with browser rendering
-
-```json
-{
-  "mcpServers": {
-    "puppeteer": {
-      "command": "docker",
-      "args": ["run", "-i", "--rm", "mcp/puppeteer"]
-    }
-  }
-}
+#### Pre-selecting a Retailer
+Append `?retailer_key=<key>` to any generated Instacart URL to pre-select the user's preferred store:
+```
+https://www.instacart.com/store/recipes/abc123?retailer_key=king_soopers
 ```
 
-**Use Cases**:
-- Navigate to recipe pages
-- Handle JavaScript-rendered content
-- Extract structured recipe data
-- Take screenshots for debugging
-
-#### 2. FireCrawl (AI-Powered Scraping)
-**Purpose**: Extract structured data from websites using AI
-
-**Use Cases**:
-- Intelligent recipe extraction without manual selectors
-- Handle varying recipe card formats across sites
-- Clean, structured JSON output
-
-#### 3. Supabase MCP (Database Operations)
-**Purpose**: Direct database interactions from Claude Code
-
-```json
-{
-  "mcpServers": {
-    "supabase": {
-      "command": "npx",
-      "args": ["@supabase/mcp-server"]
-    }
-  }
-}
-```
-
-**Use Cases**:
-- Query recipes and user data
-- Manage pantry items
-- Update meal plans
-- Debug database issues
-
-#### 4. PostgreSQL MCP (Natural Language Queries)
-**Purpose**: Query database using natural language
-
-**Use Cases**:
-- "Find all users who saved Mediterranean recipes"
-- "Show recipes that use chicken and have less than 500 calories"
-- Complex analytics queries without writing SQL
-
-#### 5. Zapier MCP (Automation)
-**Purpose**: Cross-app automation workflows
-
-**Use Cases**:
-- Send weekly meal plan summaries via email
-- Notify users when new recipes match their preferences
-- Sync with Google Calendar for meal planning
-- Post new recipes to social media
-
-#### 6. Gmail MCP (Newsletter Import)
-**Purpose**: Import recipes from email newsletters
-
-**Use Cases**:
-- Parse recipe newsletters from subscribed food bloggers
-- Extract recipes shared via email
-- Import shopping lists from email
+#### User Flow
+1. User clicks "Shop with Instacart" button
+2. Frontend calls our backend API
+3. Backend calls Instacart IDP endpoint
+4. Backend returns the generated URL (with retailer_key appended if user has preference)
+5. Frontend redirects user to Instacart
+6. User selects store (if not pre-selected), reviews products, checks out on Instacart
 
 ---
 
-## Supported Cuisines & Diets
+### Kroger API
 
-### Cuisine Types (Current)
-Italian, Mexican, Indian, Chinese, American, Mediterranean, Japanese, Thai, French, Korean, Vietnamese, Greek, Spanish, Middle Eastern, Brazilian, Caribbean, Ethiopian, German
+Direct integration with Kroger-family stores. Provides real-time pricing (unlike Instacart).
 
-### Diet Types (Expand to Support All)
-- Vegetarian
-- Vegan
-- Keto / Low-Carb
-- Paleo
-- Whole30
-- Gluten-Free
-- Dairy-Free
-- Mediterranean
-- DASH
-- Low-Sodium
-- Pescatarian
-- Nut-Free
-- Egg-Free
-- Soy-Free
-- Kosher
-- Halal
+#### Base URL
+```
+https://api.kroger.com/v1
+```
+
+#### Authentication
+OAuth 2.0 Client Credentials flow:
+```
+POST /connect/oauth2/token
+Authorization: Basic base64(client_id:client_secret)
+Body: grant_type=client_credentials&scope=product.compact
+```
+
+#### Endpoints
+
+**Find Stores**
+```
+GET /locations?filter.zipCode.near=80202&filter.radiusInMiles=10
+```
+
+**Search Products**
+```
+GET /products?filter.term=chicken&filter.locationId=01234567
+```
+
+#### Supported Store Chains
+Kroger, Ralphs, King Soopers, Fry's, Smith's, Fred Meyer, QFC, Harris Teeter, Food 4 Less, Pick 'n Save, Metro Market, Mariano's, Dillons, Baker's, City Market
 
 ---
 
-## Pantry Management
+## Backend API Endpoints
 
-### Current Pantry Items (Onboarding Step 5)
+**Base URL**: `https://budgetbite-api-69cb51842c10.herokuapp.com`
 
-#### Oils & Fats
-Olive oil, Vegetable oil, Butter
-
-#### Basics
-Salt, Pepper, Sugar, Flour, Rice, Pasta, Eggs, Milk, Bread
-
-#### Spices
-Garlic, Onions, Cumin, Paprika, Oregano, Basil, Cinnamon, Chili powder, Turmeric, Ginger, Bay leaves, Thyme
-
-#### Condiments
-Soy sauce, Hot sauce, Mustard, Ketchup, Mayo, Vinegar, Honey, Maple syrup
-
-#### Kitchen Tools
-Pots, Pans, Blender, Mixer, Air fryer, Instant Pot, Oven, Grill, Food processor, Slow cooker
-
-### Expanded Pantry Categories (To Add)
-
-#### Canned Goods
-Diced tomatoes, Tomato paste, Coconut milk, Chickpeas, Black beans, Chicken broth, Vegetable broth
-
-#### Grains & Starches
-Quinoa, Oats, Couscous, Breadcrumbs, Cornstarch, Baking powder, Baking soda, Yeast
-
-#### Nuts & Seeds
-Almonds, Walnuts, Peanuts, Sesame seeds, Chia seeds, Flaxseed
-
-#### Dairy & Alternatives
-Cream cheese, Sour cream, Heavy cream, Greek yogurt, Parmesan cheese, Cheddar cheese
-
-#### Additional Spices
-Rosemary, Sage, Nutmeg, Cloves, Cardamom, Cayenne, Italian seasoning, Taco seasoning, Curry powder, Smoked paprika, Red pepper flakes
-
-#### Sauces & Pastes
-Tomato sauce, Pesto, Salsa, Tahini, Fish sauce, Oyster sauce, Hoisin sauce, Sriracha, Worcestershire sauce
-
-#### Baking
-Vanilla extract, Cocoa powder, Chocolate chips, Brown sugar, Powdered sugar
-
-### Pantry Search Enhancement
-Add "More" pill button that triggers search for:
-- Full ingredient database from recipes
-- Common grocery items by category
-- Recently used ingredients from user's history
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Health check with feature flags |
+| POST | `/api/instacart/recipe` | Create Instacart recipe page |
+| POST | `/api/recipe/parse` | Parse recipe from URL |
+| POST | `/api/recipe/parse-with-prices` | Parse recipe + get Kroger prices |
+| GET | `/api/kroger/locations` | Find Kroger stores by ZIP |
+| GET | `/api/kroger/products` | Search Kroger products |
+| POST | `/api/prices/search` | Get prices for ingredient list |
+| POST | `/api/prices/estimate` | Estimate prices (fallback) |
+| POST | `/api/recipes/discover` | Discover recipes by category |
 
 ---
 
-## User Onboarding Flow
+## Database Schema (Supabase)
 
-### Current Steps
-1. Account creation (basic info)
-2. [Unknown - verify]
-3. [Unknown - verify]
-4. [Unknown - verify]
-5. Pantry setup
+### Core Tables
 
-### Proposed Addition
-Add to onboarding (before or after pantry):
+**profiles**
+- User profile data with RLS
+- `preferred_retailer_key` - saved Instacart retailer preference
+- `preferred_store` - legacy store name field
+- `location` - JSON with zip_code, city, state
 
-**Fresh Ingredient Preferences**
-```
-"How do you prefer your meats and produce?"
+**recipes**
+- Saved/imported recipes
+- Links to ingredients, instructions
 
-○ Fresh only - I prefer buying from the butcher counter and fresh produce section
-○ Prefer fresh - Show me fresh options first, but include pre-packaged if needed  
-○ No preference - Show me all available options
+**meal_plans**
+- Weekly meal planning data
+- Links to recipes by day/meal
 
-[Optional] Exclude these types:
-☐ Frozen items
-☐ Pre-packaged/ready-to-eat
-☐ Canned goods
-☐ Processed foods
-```
+**shopping_lists**
+- User shopping lists
+- Items with quantities, checked status
 
----
+**pantry_items**
+- User's pantry inventory
+- Used for excluding items from shopping
 
-## API Architecture (To Build)
-
-### Proposed API Structure
-
-```
-/api/v1/
-├── auth/
-│   ├── login
-│   ├── register
-│   └── refresh
-├── recipes/
-│   ├── GET /                    # List recipes
-│   ├── GET /:id                 # Get recipe detail
-│   ├── POST /extract            # Extract from URL
-│   ├── POST /discover           # AI recipe discovery
-│   └── GET /trending            # Trending recipes
-├── ingredients/
-│   ├── POST /parse              # Parse ingredient text (Claude)
-│   ├── GET /search              # Search products
-│   └── GET /map                 # Get ingredient mappings
-├── stores/
-│   ├── GET /                    # List available stores
-│   ├── GET /nearby              # Find nearby stores
-│   └── POST /products           # Search store products
-├── pantry/
-│   ├── GET /                    # Get user pantry
-│   ├── POST /                   # Add to pantry
-│   ├── DELETE /:id              # Remove from pantry
-│   └── GET /suggestions         # Suggested pantry items
-├── shopping/
-│   ├── POST /cart               # Create shopping cart
-│   ├── GET /cart                # Get current cart
-│   └── POST /checkout           # Generate Instacart link
-├── meal-plans/
-│   ├── GET /                    # Get meal plans
-│   ├── POST /                   # Create meal plan
-│   └── POST /generate           # AI-generated meal plan
-└── users/
-    ├── GET /profile
-    ├── PATCH /preferences
-    └── GET /history
-```
+**instacart_recipe_links** (cache table)
+- Caches generated Instacart URLs
+- Expires after 13 days (Instacart links expire after 14)
+- Keyed by: recipe_id, ingredients_hash, servings
 
 ---
 
-## Development Commands
+## Project Structure
 
-### Local Development
-```bash
-# Frontend (Vercel)
-cd frontend
-npm install
-npm run dev
-
-# Backend (Heroku)
-cd backend
-npm install
-npm run dev
-
-# Database (Supabase)
-supabase start
-supabase db push
 ```
-
-### Deployment
-```bash
-# Frontend
-vercel deploy
-
-# Backend
-git push heroku main
-
-# Database migrations
-supabase db push --linked
+budgetbite_claude/
+├── src/                          # Frontend source
+│   ├── components/
+│   │   ├── stores/               # Store selector components
+│   │   ├── recipes/              # Recipe cards, filters
+│   │   ├── onboarding/           # Onboarding flow
+│   │   └── ui/                   # shadcn/ui components
+│   ├── pages/
+│   │   ├── Home.jsx              # Recipe discovery
+│   │   ├── RecipeDetails.jsx     # Single recipe view
+│   │   ├── ShoppingList.jsx      # Shopping list management
+│   │   ├── MealPlanner.jsx       # Meal planning
+│   │   └── Onboarding.jsx        # New user setup
+│   ├── services/
+│   │   ├── instacart.js          # Instacart client utilities
+│   │   └── recipeDiscovery.js    # Recipe fetching
+│   ├── hooks/
+│   │   └── useKrogerPricing.js   # Kroger pricing hook
+│   └── lib/
+│       └── AuthContext.jsx       # Auth state management
+│
+├── budgetbite-api-backend/       # Backend (separate deployment)
+│   ├── server.js                 # Express app + all routes
+│   ├── migrations/               # Database migrations
+│   ├── package.json              # Backend dependencies
+│   └── .env.example              # Environment template
+│
+├── .env.development              # Frontend dev environment
+├── .env.production               # Frontend prod environment
+└── package.json                  # Frontend dependencies
 ```
 
 ---
 
 ## Environment Variables
 
-### Frontend (.env.local)
-```
-VITE_SUPABASE_URL=
-VITE_SUPABASE_ANON_KEY=
-VITE_API_BASE_URL=
-VITE_INSTACART_PARTNER_ID=
+### Frontend (.env.development / .env.production)
+```bash
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_INSTACART_API_KEY=your-instacart-key
+VITE_INSTACART_ENV=sandbox  # or "production"
 ```
 
 ### Backend (.env)
+```bash
+# Kroger API
+KROGER_CLIENT_ID=your-client-id
+KROGER_CLIENT_SECRET=your-client-secret
+
+# Instacart API
+INSTACART_API_KEY=your-api-key
+INSTACART_ENV=sandbox  # or "production"
+
+# Supabase (for caching)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_KEY=your-service-role-key
+
+# Server
+PORT=3000
 ```
-DATABASE_URL=
-SUPABASE_SERVICE_KEY=
-KROGER_CLIENT_ID=
-KROGER_CLIENT_SECRET=
-INSTACART_API_KEY=
-ANTHROPIC_API_KEY=
-IMPACT_PARTNER_ID=
+
+---
+
+## Development Workflow
+
+### Local Development
+
+**Frontend:**
+```bash
+cd budgetbite_claude
+npm install
+npm run dev
+# Runs on http://localhost:5173
 ```
+
+**Backend:**
+```bash
+cd budgetbite_claude/budgetbite-api-backend
+npm install
+npm run dev
+# Runs on http://localhost:3000
+```
+
+### Deployment
+
+**Frontend (Vercel):**
+- Automatic deployment on push to main
+- Or manual: `vercel deploy`
+
+**Backend (Heroku):**
+```bash
+cd budgetbite-api-backend
+git push heroku main
+```
+
+**View Logs:**
+```bash
+heroku logs --tail --app budgetbite-api
+```
+
+---
+
+## Current Priorities
+
+### Immediate
+1. **Store Selector Onboarding** - Call Instacart retailers endpoint with ZIP, show available brands, save preference
+2. **Append retailer_key** - All generated Instacart URLs should include user's preferred retailer
+3. **Centralize API_BASE** - Move hardcoded Heroku URL to environment variable
+
+### Short-term
+4. **Production Instacart Key** - Apply for production access, update environment
+5. **Affiliate Tracking** - Add UTM parameters for Instacart affiliate program
+6. **Recipe URL Caching** - Ensure cache is working to reduce API calls
+
+### Backlog
+- Kroger OAuth user flow for personalized pricing
+- Meal plan to bulk shopping list generation
+- Pantry-aware ingredient filtering
+- Recipe website scraping automation
+
+---
+
+## Key Implementation Notes
+
+### "Shop with Instacart" Button
+```javascript
+// Frontend: RecipeDetails.jsx
+const handleShopWithInstacart = async () => {
+  setLoading(true);
+
+  // Call our backend, not Instacart directly
+  const response = await fetch(`${API_BASE}/api/instacart/recipe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: recipe.title,
+      image_url: recipe.image_url,
+      ingredients: recipe.ingredients,
+      servings: recipe.servings,
+      recipe_id: recipe.id
+    })
+  });
+
+  const data = await response.json();
+
+  if (data.products_link_url) {
+    // Append retailer_key if user has preference
+    let url = data.products_link_url;
+    if (userProfile?.preferred_retailer_key) {
+      url += `?retailer_key=${userProfile.preferred_retailer_key}`;
+    }
+    window.open(url, '_blank');
+  }
+
+  setLoading(false);
+};
+```
+
+### Ingredient Name Cleaning
+Before sending to Instacart, clean ingredient names:
+```javascript
+// Remove quantities, measurements, prep instructions
+"2 lbs boneless chicken breast, cubed" -> "chicken breast"
+"1/2 cup fresh spinach, washed" -> "spinach"
+```
+
+The backend handles this in the `cleanIngredientName()` function.
+
+### URL Caching
+The backend caches Instacart URLs in Supabase to:
+- Reduce API calls for the same recipe
+- Speed up repeat visits
+- Cache expires after 13 days (before Instacart's 14-day expiry)
 
 ---
 
 ## Testing Checklist
 
-### Ingredient Parsing Tests
-- [ ] "1/2 tsp freshly ground black pepper" → black pepper (spices)
-- [ ] "2 lbs boneless skinless chicken breast" → chicken breast (meat)
-- [ ] "1 cup baby spinach, washed" → baby spinach (produce)
-- [ ] "EVOO for drizzling" → extra virgin olive oil (oils)
-- [ ] "3 cloves garlic, minced" → garlic (produce)
+### Instacart Integration
+- [ ] Retailers endpoint returns stores for valid ZIP
+- [ ] Recipe endpoint generates valid URL
+- [ ] Generated URLs work (redirect to Instacart)
+- [ ] retailer_key parameter pre-selects store
+- [ ] URL caching works (second request returns cached URL)
 
-### Product Matching Tests
-- [ ] Fresh preference filters out frozen items
-- [ ] Minimum quantity returns smallest viable package
-- [ ] Quality brands score higher than store brands
-- [ ] Pantry items show as "in pantry" in recipe view
+### Kroger Integration
+- [ ] OAuth token refresh works
+- [ ] Location search returns nearby stores
+- [ ] Product search returns relevant results
+- [ ] Prices are attached to parsed recipes
 
-### Store Integration Tests
-- [ ] Instacart recipe page generation works
-- [ ] Affiliate tracking parameters included
-- [ ] Store selection persists for user
-- [ ] Fallback to Kroger when needed
-
----
-
-## Key Contacts & Resources
-
-### Instacart Developer Platform
-- Apply: https://www.instacart.com/company/business/developers
-- Docs: https://docs.instacart.com/developer_platform_api/
-- Affiliate: https://www.instacart.com/company/affiliate
-
-### Kroger Developer Portal
-- Docs: https://developer.kroger.com/
-
-### Supabase
-- Dashboard: https://supabase.com/dashboard
-- Docs: https://supabase.com/docs
+### Recipe Parsing
+- [ ] Parses major recipe sites (AllRecipes, Budget Bytes, etc.)
+- [ ] Extracts title, image, ingredients, instructions
+- [ ] Handles various ingredient formats
 
 ---
 
-## Notes for Claude Code
+## Resources
 
-When working on this project:
-
-1. **Always pre-process ingredients** through Claude before searching store APIs
-2. **Preserve original recipe formatting** in display while using parsed data for searches
-3. **Test with edge cases**: unusual measurements, brand-specific ingredients, international ingredients
-4. **Prioritize Instacart IDP** for new store integrations - don't build separate scrapers for each store
-5. **Include affiliate tracking** in all Instacart URLs for monetization
-6. **Respect user preferences** for fresh vs pre-packaged at every product selection point
-7. **Handle pantry items gracefully** - show in recipe but mark as "in pantry" with toggle option
+- **Instacart IDP Docs**: https://docs.instacart.com/developer_platform_api/
+- **Kroger Developer Portal**: https://developer.kroger.com/
+- **Supabase Dashboard**: https://supabase.com/dashboard
+- **Heroku Dashboard**: https://dashboard.heroku.com/apps/budgetbite-api
 
 ---
 
-*Last Updated: January 29, 2025*
-*Version: 2.0 - Multi-Store Expansion*
+*Last Updated: February 2025*

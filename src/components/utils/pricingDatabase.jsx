@@ -1,4 +1,4 @@
-const API_BASE = 'https://budgetbite-api-69cb51842c10.herokuapp.com';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://budgetbite-api-69cb51842c10.herokuapp.com';
 
 const KROGER_STORES = [
   'Kroger', 'Ralphs', 'Fred Meyer', 'King Soopers', 'Smith\'s', 'Fry\'s', 

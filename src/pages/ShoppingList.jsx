@@ -4,13 +4,16 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { startOfWeek, addDays, format } from 'date-fns';
-import { ShoppingCart, Copy, ArrowLeft, Plus, Trash2, Leaf, Beef, Milk, Package, ShoppingBag, X, ChefHat } from 'lucide-react';
+import { ShoppingCart, Copy, ArrowLeft, Plus, Trash2, Leaf, Beef, Milk, Package, ShoppingBag, X, ChefHat, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/use-toast';
 import { shoppingListStorage } from '@/utils/shoppingListStorage';
+
+// Get API base URL from environment
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://budgetbite-api-69cb51842c10.herokuapp.com';
 
 const CATEGORIES = {
   'Produce': ['onion', 'garlic', 'tomato', 'potato', 'carrot', 'celery', 'pepper', 'broccoli', 'spinach', 'lettuce', 'cucumber', 'avocado', 'lemon', 'lime', 'ginger', 'cilantro', 'basil', 'parsley', 'kale', 'mushroom'],
@@ -34,6 +37,7 @@ export default function ShoppingList() {
   const [newItem, setNewItem] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isInstacartLoading, setIsInstacartLoading] = useState(false);
   const inputRef = useRef(null);
   const suggestionsRef = useRef(null);
   const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 0 });
@@ -249,6 +253,81 @@ export default function ShoppingList() {
     const items = shoppingListStorage.removeRecipeItems(recipeName);
     setPersistedItems(items);
     toast({ title: "Removed", description: `All items from "${recipeName}" removed` });
+  };
+
+  // Handle checkout with Instacart
+  const handleCheckoutWithInstacart = async () => {
+    if (combinedItems.length === 0) {
+      toast({
+        title: "No items to checkout",
+        description: "Add items to your shopping list first.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsInstacartLoading(true);
+    try {
+      // Collect all unchecked items for Instacart
+      const itemsToCheckout = combinedItems
+        .filter(item => !item.checked)
+        .map(item => ({
+          name: item.name,
+          quantity: item.amount || 1,
+          unit: item.unit || ''
+        }));
+
+      if (itemsToCheckout.length === 0) {
+        toast({
+          title: "All items checked",
+          description: "Uncheck items you still need to purchase.",
+        });
+        setIsInstacartLoading(false);
+        return;
+      }
+
+      const response = await fetch(`${API_BASE}/api/instacart/shopping-list`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'DishDollar Shopping List',
+          items: itemsToCheckout
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `API error: ${response.status}`);
+      }
+
+      if (data.url) {
+        // Append retailer_key if user has a preferred retailer
+        let instacartUrl = data.url;
+        if (userProfile?.preferred_retailer_key) {
+          const separator = instacartUrl.includes('?') ? '&' : '?';
+          instacartUrl += `${separator}retailer_key=${userProfile.preferred_retailer_key}`;
+        }
+
+        // Open Instacart in new tab
+        window.open(instacartUrl, '_blank');
+        toast({
+          title: "Opening Instacart",
+          description: `${itemsToCheckout.length} items ready for checkout!`,
+        });
+      } else {
+        throw new Error('No Instacart URL returned');
+      }
+    } catch (error) {
+      console.error('Instacart error:', error);
+      toast({
+        title: "Unable to connect to Instacart",
+        description: error.message || "Please try again later.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsInstacartLoading(false);
+    }
   };
 
   // Group items by source for display
@@ -504,11 +583,21 @@ export default function ShoppingList() {
               </Button>
 
               <Button
-                onClick={() => window.open('https://docs.instacart.com/developer_platform_api/', '_blank')}
-                className="flex-1 rounded-full bg-green-600 hover:bg-green-700 text-white"
+                onClick={handleCheckoutWithInstacart}
+                disabled={isInstacartLoading || combinedItems.filter(i => !i.checked).length === 0}
+                className="flex-1 rounded-full bg-green-600 hover:bg-green-700 text-white disabled:opacity-70"
               >
-                <ShoppingCart className="w-5 h-5 mr-2" />
-                Checkout with Instacart
+                {isInstacartLoading ? (
+                  <>
+                    <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                    Creating List...
+                  </>
+                ) : (
+                  <>
+                    <ShoppingCart className="w-5 h-5 mr-2" />
+                    Checkout with Instacart
+                  </>
+                )}
               </Button>
             </div>
           </CardContent>

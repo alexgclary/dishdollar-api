@@ -55,13 +55,15 @@ export default function RecipeDetails() {
   // Check if user's store supports real-time pricing
   const supportsLivePricing = hasRealTimePricing(profileData?.preferred_store);
 
+  // Get API base URL from environment
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://budgetbite-api-69cb51842c10.herokuapp.com';
+
   // Fetch live prices from Kroger API
   const fetchLivePrices = async () => {
     if (!recipe?.ingredients?.length || !supportsLivePricing) return;
 
     setIsPricingLoading(true);
     try {
-      const API_BASE = 'https://budgetbite-api-69cb51842c10.herokuapp.com';
       const response = await fetch(`${API_BASE}/api/prices/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -255,8 +257,6 @@ export default function RecipeDetails() {
 
     setIsInstacartLoading(true);
     try {
-      const API_BASE = 'https://budgetbite-api-69cb51842c10.herokuapp.com';
-
       // Get shopping items (excludes pantry items, applies serving scale)
       const shoppingItems = getShoppingItems();
 
@@ -264,8 +264,7 @@ export default function RecipeDetails() {
       const ingredients = shoppingItems.map(item => ({
         name: item.name,
         quantity: parseFloat(item.scaledAmount) || item.amount || 1,
-        unit: item.unit || '',
-        display_text: `${item.scaledAmount} ${item.unit} ${item.name}`.trim()
+        unit: item.unit || ''
       }));
 
       const response = await fetch(`${API_BASE}/api/instacart/recipe`, {
@@ -284,15 +283,26 @@ export default function RecipeDetails() {
 
       const data = await response.json();
 
-      if (data.success && data.products_link_url) {
-        // Redirect to Instacart recipe page
-        window.open(data.products_link_url, '_blank');
+      if (!response.ok) {
+        throw new Error(data.error || `API error: ${response.status}`);
+      }
+
+      if (data.url) {
+        // Append retailer_key if user has a preferred retailer
+        let instacartUrl = data.url;
+        if (profileData?.preferred_retailer_key) {
+          const separator = instacartUrl.includes('?') ? '&' : '?';
+          instacartUrl += `${separator}retailer_key=${profileData.preferred_retailer_key}`;
+        }
+
+        // Open Instacart recipe page in new tab
+        window.open(instacartUrl, '_blank');
         toast({
           title: "Opening Instacart",
-          description: "Your recipe cart is ready! Complete your order on Instacart.",
+          description: "Your recipe is ready! Complete your order on Instacart.",
         });
       } else {
-        throw new Error(data.error || 'Failed to create Instacart cart');
+        throw new Error('No Instacart URL returned');
       }
     } catch (error) {
       console.error('Instacart error:', error);

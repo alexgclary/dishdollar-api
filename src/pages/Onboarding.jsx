@@ -16,7 +16,8 @@ import SearchablePillSelector from '@/components/onboarding/SearchablePillSelect
 import AppIntroModal from '@/components/onboarding/AppIntroModal';
 import { FloatingVegetables, WavyBackground } from '@/components/ui/DecorativeElements';
 import { US_STATES } from '@/utils/usStates';
-import InstacartStoreSelector from '@/components/stores/InstacartStoreSelector';
+import InstacartStoreSelector, { KROGER_FAMILY_RETAILERS } from '@/components/stores/InstacartStoreSelector';
+import KrogerLocationSelector from '@/components/stores/KrogerLocationSelector';
 
 // Store data with regions for smarter recommendations
 const storeData = [
@@ -167,6 +168,8 @@ export default function Onboarding() {
     date_of_birth: '',
     location: { city: '', state: '', zip_code: '' },
     preferred_store: '',
+    preferred_retailer_key: '',  // Instacart retailer key for URL appending
+    kroger_location_id: '',      // Specific Kroger store for pricing
     cuisines: [],
     dietary_restrictions: [],
     allergies: [],
@@ -178,6 +181,7 @@ export default function Onboarding() {
     pantry_items: [],
     notifications_enabled: false
   });
+  const [showKrogerLocations, setShowKrogerLocations] = useState(false);
 
   // Show app intro on first visit
   const [showIntro, setShowIntro] = useState(() => {
@@ -526,13 +530,25 @@ export default function Onboarding() {
               <div>
                 <Label className="flex items-center gap-2">
                   <Store className="w-4 h-4" />
-                  Preferred Store *
+                  Preferred Store for Instacart Delivery *
                 </Label>
                 <div className="mt-2">
                   <InstacartStoreSelector
                     zipCode={formData.location.zip_code}
-                    onStoreSelect={(store) => updateForm('preferred_store', store)}
+                    onStoreSelect={(retailer) => {
+                      // retailer is { name, retailer_key, logo_url, isKrogerFamily }
+                      updateForm('preferred_store', retailer.name);
+                      updateForm('preferred_retailer_key', retailer.retailer_key);
+                      // Show Kroger location selector if it's a Kroger-family store
+                      if (retailer.isKrogerFamily) {
+                        setShowKrogerLocations(true);
+                      } else {
+                        setShowKrogerLocations(false);
+                        updateForm('kroger_location_id', '');
+                      }
+                    }}
                     selectedStore={formData.preferred_store}
+                    selectedRetailerKey={formData.preferred_retailer_key}
                     fallbackStores={stores}
                   />
                 </div>
@@ -541,6 +557,24 @@ export default function Onboarding() {
                     <AlertCircle className="w-4 h-4" />
                     {errors.preferred_store}
                   </p>
+                )}
+
+                {/* Kroger Location Selector - shows when a Kroger-family store is selected */}
+                {showKrogerLocations && formData.preferred_store && (
+                  <div className="mt-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
+                    <KrogerLocationSelector
+                      zipCode={formData.location.zip_code}
+                      storeName={formData.preferred_store}
+                      selectedLocationId={formData.kroger_location_id}
+                      onLocationSelect={(location) => {
+                        if (location) {
+                          updateForm('kroger_location_id', location.locationId);
+                        } else {
+                          updateForm('kroger_location_id', '');
+                        }
+                      }}
+                    />
+                  </div>
                 )}
               </div>
             </div>
