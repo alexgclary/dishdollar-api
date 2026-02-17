@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { auth, entities } from '@/services';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Link as LinkIcon, Loader2, Sparkles, Check, Plus, Trash2, PenLine, DollarSign, Zap, AlertCircle, ShoppingCart } from 'lucide-react';
+import { useAuth } from '@/lib/AuthContext';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, Link as LinkIcon, Loader2, Sparkles, Check, Plus, Trash2, PenLine, DollarSign, Zap, AlertCircle, ShoppingCart, Clock, ExternalLink, History, RefreshCw } from 'lucide-react';
+import { useRecipeNormalization } from '@/hooks/useRecipeNormalization';
 import { shoppingListStorage } from '@/utils/shoppingListStorage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,15 +33,19 @@ const dietOptions = [
   { value: 'Gluten-Free', icon: '🌾' }, { value: 'Dairy-Free', icon: '🥛' }, { value: 'Low-Carb', icon: '🍞' }
 ];
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://budgetbite-api-69cb51842c10.herokuapp.com';
+
 export default function AddRecipe() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [url, setUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [extractedData, setExtractedData] = useState(null);
   const [pantryItems, setPantryItems] = useState([]);
   const [parseError, setParseError] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const [manualRecipe, setManualRecipe] = useState({
     title: '', description: '', image_url: '', prep_time: 15, cook_time: 30, servings: 4,
@@ -51,13 +57,90 @@ export default function AddRecipe() {
   const { data: userProfile } = useQuery({
     queryKey: ['userProfile'],
     queryFn: async () => {
-      const user = await auth.me();
-      const profiles = await entities.UserProfile.filter({ user_id: user.id });
+      const currentUser = await auth.me();
+      const profiles = await entities.UserProfile.filter({ user_id: currentUser.id });
       return profiles[0];
     }
   });
 
+  // Fetch extraction history
+  const { data: extractionHistory = [], refetch: refetchHistory } = useQuery({
+    queryKey: ['extractionHistory', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const response = await fetch(`${API_BASE}/api/extracted-recipes/${user.id}`);
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.recipes || [];
+    },
+    enabled: !!user?.id
+  });
+
   const hasRealtimePricing = userProfile?.preferred_store && hasRealTimePricing(userProfile.preferred_store);
+
+  // AI recipe normalization (rewriting)
+  const { normalizedRecipe, isNormalizing, normalize, reset: resetNormalization } = useRecipeNormalization();
+
+  // Trigger normalization when a recipe is extracted
+  useEffect(() => {
+    if (extractedData && !extractedData.rewritten && !isNormalizing && !normalizedRecipe) {
+      normalize(extractedData);
+    }
+  }, [extractedData]);
+
+  // Swap in normalized data when ready (preserve pricing data from original)
+  useEffect(() => {
+    if (normalizedRecipe && extractedData) {
+      setExtractedData(prev => ({
+        ...prev,
+        ...normalizedRecipe,
+        // Keep original pricing/kroger data
+        ingredients: normalizedRecipe.ingredients?.map((normIng, i) => ({
+          ...normIng,
+          estimated_price: prev.ingredients?.[i]?.estimated_price || normIng.estimated_price || 2.50,
+          krogerProduct: prev.ingredients?.[i]?.krogerProduct || null
+        })) || prev.ingredients,
+        rewritten: true
+      }));
+    }
+  }, [normalizedRecipe]);
+
+  // Save extraction to history
+  const saveExtraction = async (recipe, recipeUrl) => {
+    if (!user?.id) return;
+    try {
+      await fetch(`${API_BASE}/api/extracted-recipes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          recipe_url: recipeUrl,
+          recipe_title: recipe.title,
+          recipe_data: recipe
+        })
+      });
+      refetchHistory();
+    } catch (err) {
+      console.error('Failed to save extraction history:', err);
+    }
+  };
+
+  // Delete extraction from history
+  const handleDeleteExtraction = async (recipeId) => {
+    if (!window.confirm('Remove this recipe from your extraction history?')) return;
+    setDeletingId(recipeId);
+    try {
+      const response = await fetch(`${API_BASE}/api/extracted-recipes/${recipeId}`, { method: 'DELETE' });
+      if (response.ok) {
+        refetchHistory();
+        toast({ title: 'Removed', description: 'Recipe removed from history' });
+      }
+    } catch (err) {
+      toast({ title: 'Error', description: 'Failed to remove recipe', variant: 'destructive' });
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const handleExtract = async () => {
     if (!url.trim()) {
@@ -78,6 +161,9 @@ export default function AddRecipe() {
       setExtractedData(recipe);
       setPantryItems([]);
       toast({ title: "Recipe Extracted!", description: `Found: ${recipe.title}` });
+
+      // Save to extraction history
+      saveExtraction(recipe, url.trim());
     } catch (error) {
       console.error('Extraction error:', error);
       const errorMessage = error.message || 'Could not extract recipe. Please try a different URL or add the recipe manually.';
@@ -282,7 +368,21 @@ export default function AddRecipe() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <Card className="border-0 shadow-xl">
               <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50">
-                <CardTitle className="flex items-center gap-2 text-green-800"><Check className="w-6 h-6" />Recipe Extracted!</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-green-800"><Check className="w-6 h-6" />Recipe Extracted!</CardTitle>
+                  {isNormalizing && (
+                    <span className="flex items-center gap-2 text-sm text-amber-600 font-medium">
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Rewriting instructions...
+                    </span>
+                  )}
+                  {extractedData?.rewritten && !isNormalizing && (
+                    <span className="flex items-center gap-2 text-sm text-green-600 font-medium">
+                      <Sparkles className="w-4 h-4" />
+                      AI Rewritten
+                    </span>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-6 pt-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -397,7 +497,7 @@ export default function AddRecipe() {
 
                 <div className="flex flex-col gap-3 pt-4">
                   <div className="flex gap-3">
-                    <Button onClick={() => { setExtractedData(null); setUrl(''); }} variant="outline" className="flex-1 rounded-xl">Try Another</Button>
+                    <Button onClick={() => { setExtractedData(null); setUrl(''); resetNormalization(); }} variant="outline" className="flex-1 rounded-xl">Try Another</Button>
                     <Button onClick={() => saveRecipeMutation.mutate(extractedData)} disabled={saveRecipeMutation.isPending} className="flex-1 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500">
                       {saveRecipeMutation.isPending ? 'Saving...' : 'Save Recipe'}
                     </Button>
@@ -426,6 +526,104 @@ export default function AddRecipe() {
               </CardContent>
             </Card>
           </motion.div>
+        )}
+
+        {/* Previously Extracted Recipes */}
+        {extractionHistory.length > 0 && (
+          <div className="mt-10">
+            <div className="flex items-center gap-2 mb-4">
+              <History className="w-5 h-5 text-gray-500" />
+              <h2 className="text-xl font-bold text-gray-800">Previously Extracted</h2>
+              <span className="text-sm text-gray-400">({extractionHistory.length})</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <AnimatePresence>
+                {extractionHistory.map((item) => (
+                  <motion.div
+                    key={item.id}
+                    layout
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    {/* Image */}
+                    {item.recipe_data?.image_url && (
+                      <img
+                        src={item.recipe_data.image_url}
+                        alt={item.recipe_title}
+                        className="w-full h-32 object-cover"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    )}
+
+                    <div className="p-4">
+                      <h3
+                        className="font-semibold text-gray-800 line-clamp-2 mb-2 cursor-pointer hover:text-green-600 transition-colors"
+                        onClick={() => {
+                          setExtractedData(item.recipe_data);
+                          setPantryItems([]);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                      >
+                        {item.recipe_title}
+                      </h3>
+
+                      {/* Meta info */}
+                      <div className="flex items-center gap-3 text-xs text-gray-400 mb-3">
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {new Date(item.extracted_at).toLocaleDateString()}
+                        </span>
+                        {item.recipe_data?.source_name && (
+                          <span className="flex items-center gap-1">
+                            <ExternalLink className="w-3 h-3" />
+                            {item.recipe_data.source_name}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Cost if available */}
+                      {item.recipe_data?.total_cost > 0 && (
+                        <p className="text-sm text-green-600 font-medium mb-3">
+                          ~${item.recipe_data.total_cost.toFixed(2)} est.
+                        </p>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 rounded-lg text-xs"
+                          onClick={() => {
+                            setExtractedData(item.recipe_data);
+                            setPantryItems([]);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                        >
+                          View
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="rounded-lg text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
+                          disabled={deletingId === item.id}
+                          onClick={() => handleDeleteExtraction(item.id)}
+                        >
+                          {deletingId === item.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3 h-3" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          </div>
         )}
       </div>
     </div>

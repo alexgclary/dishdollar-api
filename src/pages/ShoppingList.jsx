@@ -257,6 +257,9 @@ export default function ShoppingList() {
 
   // Handle checkout with Instacart
   const handleCheckoutWithInstacart = async () => {
+    console.log('[Instacart Shopping List] Starting checkout...');
+    console.log('[Instacart Shopping List] API_BASE:', API_BASE);
+
     if (combinedItems.length === 0) {
       toast({
         title: "No items to checkout",
@@ -277,6 +280,8 @@ export default function ShoppingList() {
           unit: item.unit || ''
         }));
 
+      console.log('[Instacart Shopping List] Items to checkout:', itemsToCheckout);
+
       if (itemsToCheckout.length === 0) {
         toast({
           title: "All items checked",
@@ -286,16 +291,25 @@ export default function ShoppingList() {
         return;
       }
 
-      const response = await fetch(`${API_BASE}/api/instacart/shopping-list`, {
+      const requestUrl = `${API_BASE}/api/instacart/shopping-list`;
+      const requestBody = {
+        title: 'DishDollar Shopping List',
+        items: itemsToCheckout
+      };
+
+      console.log('[Instacart Shopping List] POST', requestUrl);
+      console.log('[Instacart Shopping List] Request body:', requestBody);
+
+      const response = await fetch(requestUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: 'DishDollar Shopping List',
-          items: itemsToCheckout
-        })
+        body: JSON.stringify(requestBody)
       });
 
+      console.log('[Instacart Shopping List] Response status:', response.status);
+
       const data = await response.json();
+      console.log('[Instacart Shopping List] Response data:', data);
 
       if (!response.ok) {
         throw new Error(data.error || `API error: ${response.status}`);
@@ -309,6 +323,8 @@ export default function ShoppingList() {
           instacartUrl += `${separator}retailer_key=${userProfile.preferred_retailer_key}`;
         }
 
+        console.log('[Instacart Shopping List] Opening URL:', instacartUrl);
+
         // Open Instacart in new tab
         window.open(instacartUrl, '_blank');
         toast({
@@ -316,10 +332,11 @@ export default function ShoppingList() {
           description: `${itemsToCheckout.length} items ready for checkout!`,
         });
       } else {
+        console.error('[Instacart Shopping List] No URL in response:', data);
         throw new Error('No Instacart URL returned');
       }
     } catch (error) {
-      console.error('Instacart error:', error);
+      console.error('[Instacart Shopping List] Error:', error);
       toast({
         title: "Unable to connect to Instacart",
         description: error.message || "Please try again later.",
@@ -511,7 +528,7 @@ export default function ShoppingList() {
                     />
                     <div className="flex-1 min-w-0">
                       <p className={`font-medium ${item.checked ? 'line-through text-gray-400' : 'text-gray-800'}`}>
-                        {item.amount ? `${item.amount.toFixed(1)} ${item.unit || ''} `.trim() : ''}{item.name}
+                        {item.amount ? `${item.amount.toFixed(1)}${item.unit ? ` ${item.unit}` : ''} ` : ''}{item.name}
                       </p>
                       {item.sources && item.sources.length > 1 && (
                         <p className="text-xs text-gray-500 truncate">Also in: {item.sources.filter(s => s !== source).join(', ')}</p>

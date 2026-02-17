@@ -18,6 +18,9 @@ import { FloatingVegetables, WavyBackground } from '@/components/ui/DecorativeEl
 import { US_STATES } from '@/utils/usStates';
 import InstacartStoreSelector, { KROGER_FAMILY_RETAILERS } from '@/components/stores/InstacartStoreSelector';
 import KrogerLocationSelector from '@/components/stores/KrogerLocationSelector';
+import { topSpices, allSpices } from '@/data/commonSpices';
+import { topTools, allTools } from '@/data/commonKitchenTools';
+import { topPantryItems, allPantryItems } from '@/data/commonPantryItems';
 
 // Store data with regions for smarter recommendations
 const storeData = [
@@ -65,12 +68,7 @@ const diets = [
   { value: 'No Restrictions', icon: '✨' }
 ];
 
-const pantryItems = {
-  basics: ['Olive Oil', 'Vegetable Oil', 'Salt', 'Pepper', 'Sugar', 'Flour', 'Rice', 'Pasta', 'Butter', 'Eggs', 'Milk', 'Bread'],
-  spices: ['Garlic', 'Onions', 'Cumin', 'Paprika', 'Oregano', 'Basil', 'Cinnamon', 'Chili Powder', 'Turmeric', 'Ginger', 'Bay Leaves', 'Thyme'],
-  condiments: ['Soy Sauce', 'Hot Sauce', 'Mustard', 'Ketchup', 'Mayo', 'Vinegar', 'Honey', 'Maple Syrup'],
-  tools: ['Pots', 'Pans', 'Blender', 'Mixer', 'Air Fryer', 'Instant Pot', 'Oven', 'Grill', 'Food Processor', 'Slow Cooker']
-};
+// Pantry items now imported from src/data/ files
 
 // Extended cuisines for search
 const extendedCuisines = [
@@ -117,41 +115,7 @@ const extendedAllergies = [
   { value: 'Onion', icon: '🧅' }
 ];
 
-// Extended basics for search
-const extendedBasics = [
-  'Coconut Oil', 'Avocado Oil', 'Sesame Oil', 'Ghee', 'Lard',
-  'Brown Sugar', 'Powdered Sugar', 'Whole Wheat Flour', 'Bread Flour', 'Almond Flour',
-  'Cornstarch', 'Baking Soda', 'Baking Powder', 'Yeast', 'Oats',
-  'Quinoa', 'Couscous', 'Brown Rice', 'Basmati Rice', 'Jasmine Rice',
-  'Spaghetti', 'Penne', 'Linguine', 'Tortillas', 'Pita Bread'
-];
-
-// Extended spices for search
-const extendedSpices = [
-  'Rosemary', 'Sage', 'Nutmeg', 'Cloves', 'Cardamom', 'Cayenne',
-  'Italian Seasoning', 'Taco Seasoning', 'Curry Powder', 'Smoked Paprika',
-  'Red Pepper Flakes', 'Fennel Seeds', 'Coriander', 'Dill', 'Mint',
-  'Tarragon', 'Chives', 'Lemongrass', 'Star Anise', 'Saffron',
-  'Allspice', 'Mustard Seeds', 'Celery Salt', 'Onion Powder', 'Garlic Powder'
-];
-
-// Extended condiments for search
-const extendedCondiments = [
-  'Worcestershire Sauce', 'BBQ Sauce', 'Sriracha', 'Tahini', 'Fish Sauce',
-  'Oyster Sauce', 'Hoisin Sauce', 'Teriyaki Sauce', 'Salsa', 'Pesto',
-  'Ranch Dressing', 'Italian Dressing', 'Balsamic Vinegar', 'Rice Vinegar', 'Apple Cider Vinegar',
-  'Dijon Mustard', 'Whole Grain Mustard', 'Relish', 'Pickles', 'Capers',
-  'Olives', 'Sun-Dried Tomatoes', 'Anchovy Paste', 'Miso Paste', 'Chili Paste'
-];
-
-// Extended kitchen tools for search
-const extendedTools = [
-  'Sous Vide', 'Dutch Oven', 'Cast Iron Skillet', 'Wok', 'Mandoline',
-  'Kitchen Scale', 'Thermometer', 'Rice Cooker', 'Pressure Cooker', 'Griddle',
-  'Waffle Maker', 'Stand Mixer', 'Immersion Blender', 'Spiralizer', 'Juicer',
-  'Dehydrator', 'Smoker', 'Pizza Stone', 'Bread Machine', 'Ice Cream Maker',
-  'Toaster Oven', 'Convection Oven', 'Steamer', 'Deep Fryer', 'Popcorn Maker'
-];
+// Extended items now imported from src/data/ files
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -768,11 +732,6 @@ export default function Onboarding() {
 
       case 6:
         // Helper functions for each category
-        const allBasicsOptions = [...pantryItems.basics, ...extendedBasics];
-        const allSpicesOptions = [...pantryItems.spices, ...extendedSpices];
-        const allCondimentsOptions = [...pantryItems.condiments, ...extendedCondiments];
-        const allToolsOptions = [...pantryItems.tools, ...extendedTools];
-
         const getSelectedForCategory = (categoryOptions) =>
           formData.pantry_items.filter(item => categoryOptions.includes(item));
 
@@ -784,6 +743,11 @@ export default function Onboarding() {
           updateForm('pantry_items', [...outsideCategory, ...newItems]);
         };
 
+        // Searchable options exclude the top picks (already shown as pills)
+        const searchablePantry = allPantryItems.filter(i => !topPantryItems.includes(i));
+        const searchableSpices = allSpices.filter(i => !topSpices.includes(i));
+        const searchableTools = allTools.filter(i => !topTools.includes(i));
+
         return (
           <motion.div key="step6" variants={variants} initial="enter" animate="center" exit="exit" className="space-y-6">
             <div className="text-center mb-6">
@@ -794,31 +758,31 @@ export default function Onboarding() {
               <p className="text-gray-500 mt-2">We'll deduct these from recipe costs</p>
             </div>
             <div className="space-y-6 max-h-[55vh] overflow-y-auto pr-2">
-              {/* Basics */}
+              {/* Pantry Basics & Condiments */}
               <div>
-                <Label className="text-sm text-gray-600 font-semibold">Basics</Label>
+                <Label className="text-sm text-gray-600 font-semibold">Pantry Staples</Label>
                 <div className="mt-2">
                   <SearchablePillSelector
-                    options={pantryItems.basics.map(t => ({ value: t, label: t }))}
-                    searchableOptions={extendedBasics.map(t => ({ value: t, label: t }))}
-                    selected={getSelectedForCategory(allBasicsOptions)}
-                    onChange={(newItems) => handleCategoryChange(allBasicsOptions, newItems)}
+                    options={topPantryItems.map(t => ({ value: t, label: t }))}
+                    searchableOptions={searchablePantry.map(t => ({ value: t, label: t }))}
+                    selected={getSelectedForCategory(allPantryItems)}
+                    onChange={(newItems) => handleCategoryChange(allPantryItems, newItems)}
                     columns={3}
-                    placeholder="Search basics..."
+                    placeholder="Search pantry items..."
                     searchLabel="More"
                   />
                 </div>
               </div>
 
-              {/* Spices */}
+              {/* Spices & Seasonings */}
               <div>
-                <Label className="text-sm text-gray-600 font-semibold">Spices</Label>
+                <Label className="text-sm text-gray-600 font-semibold">Spices & Seasonings</Label>
                 <div className="mt-2">
                   <SearchablePillSelector
-                    options={pantryItems.spices.map(t => ({ value: t, label: t }))}
-                    searchableOptions={extendedSpices.map(t => ({ value: t, label: t }))}
-                    selected={getSelectedForCategory(allSpicesOptions)}
-                    onChange={(newItems) => handleCategoryChange(allSpicesOptions, newItems)}
+                    options={topSpices.map(t => ({ value: t, label: t }))}
+                    searchableOptions={searchableSpices.map(t => ({ value: t, label: t }))}
+                    selected={getSelectedForCategory(allSpices)}
+                    onChange={(newItems) => handleCategoryChange(allSpices, newItems)}
                     columns={3}
                     placeholder="Search spices..."
                     searchLabel="More"
@@ -826,31 +790,15 @@ export default function Onboarding() {
                 </div>
               </div>
 
-              {/* Condiments */}
-              <div>
-                <Label className="text-sm text-gray-600 font-semibold">Condiments</Label>
-                <div className="mt-2">
-                  <SearchablePillSelector
-                    options={pantryItems.condiments.map(t => ({ value: t, label: t }))}
-                    searchableOptions={extendedCondiments.map(t => ({ value: t, label: t }))}
-                    selected={getSelectedForCategory(allCondimentsOptions)}
-                    onChange={(newItems) => handleCategoryChange(allCondimentsOptions, newItems)}
-                    columns={3}
-                    placeholder="Search condiments..."
-                    searchLabel="More"
-                  />
-                </div>
-              </div>
-
-              {/* Kitchen Tools */}
+              {/* Kitchen Tools & Equipment */}
               <div>
                 <Label className="text-sm text-gray-600 font-semibold">Kitchen Tools</Label>
                 <div className="mt-2">
                   <SearchablePillSelector
-                    options={pantryItems.tools.map(t => ({ value: t, label: t }))}
-                    searchableOptions={extendedTools.map(t => ({ value: t, label: t }))}
-                    selected={getSelectedForCategory(allToolsOptions)}
-                    onChange={(newItems) => handleCategoryChange(allToolsOptions, newItems)}
+                    options={topTools.map(t => ({ value: t, label: t }))}
+                    searchableOptions={searchableTools.map(t => ({ value: t, label: t }))}
+                    selected={getSelectedForCategory(allTools)}
+                    onChange={(newItems) => handleCategoryChange(allTools, newItems)}
                     columns={3}
                     placeholder="Search tools..."
                     searchLabel="More"

@@ -14,7 +14,8 @@ import {
   MealPlan,
   BudgetEntry,
   ShoppingList,
-  PantryItem
+  PantryItem,
+  ExtractedRecipe
 } from './entities';
 import { supabase, isSupabaseConfigured } from '@/api/supabase';
 
@@ -62,6 +63,7 @@ export {
   BudgetEntry,
   ShoppingList,
   PantryItem,
+  ExtractedRecipe,
   supabase,
   isSupabaseConfigured
 };

@@ -92,6 +92,28 @@ export function hasRealTimePricing(storeName) {
   return KROGER_STORES.some(s => storeName.toLowerCase().includes(s.toLowerCase()));
 }
 
+// Get the pricing tier for a store
+export function getPricingTier(storeName) {
+  if (!storeName) return 'fallback';
+  if (KROGER_STORES.some(s => storeName.toLowerCase().includes(s.toLowerCase()))) {
+    return 'kroger';
+  }
+  return 'spoonacular';
+}
+
+// Get display info for a confidence level
+export function getConfidenceLabel(confidence) {
+  switch (confidence) {
+    case 'high':
+      return { text: 'Live prices', color: 'text-blue-600', bgColor: 'bg-blue-50', icon: 'zap' };
+    case 'medium':
+      return { text: 'Estimated', color: 'text-amber-600', bgColor: 'bg-amber-50', icon: 'store' };
+    case 'low':
+    default:
+      return { text: 'Approximate', color: 'text-gray-500', bgColor: 'bg-gray-50', icon: 'store' };
+  }
+}
+
 // Fallback pricing estimation
 export async function getRecipePricing(ingredients, userProfile = {}) {
   try {
@@ -111,4 +133,4 @@ export async function getRecipePricing(ingredients, userProfile = {}) {
   }
 }
 
-export default { parseRecipeWithPrices, parseRecipeFromUrl, hasRealTimePricing, getRecipePricing, findKrogerLocation };
+export default { parseRecipeWithPrices, parseRecipeFromUrl, hasRealTimePricing, getPricingTier, getConfidenceLabel, getRecipePricing, findKrogerLocation };

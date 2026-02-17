@@ -262,6 +262,7 @@ export const MealPlan = createEntityService('MealPlan', 'meal_plans');
 export const BudgetEntry = createEntityService('BudgetEntry', 'budget_entries');
 export const ShoppingList = createEntityService('ShoppingList', 'shopping_lists');
 export const PantryItem = createEntityService('PantryItem', 'pantry_items');
+export const ExtractedRecipe = createEntityService('ExtractedRecipe', 'user_extracted_recipes');
 
 // Export all entities as a single object for backwards compatibility
 export const entities = {
@@ -271,7 +272,8 @@ export const entities = {
   MealPlan,
   BudgetEntry,
   ShoppingList,
-  PantryItem
+  PantryItem,
+  ExtractedRecipe
 };
 
 export default entities;

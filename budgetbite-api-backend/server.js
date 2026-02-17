@@ -4,6 +4,10 @@ const cors = require('cors');
 const cheerio = require('cheerio');
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
+const { discoverRecipeUrls } = require('./services/recipeDiscovery');
+const { extractRecipeFromUrl } = require('./services/recipeExtraction');
+const { normalizeRecipe } = require('./services/recipeNormalization');
+const { getIngredientPrices, FALLBACK_PRICES } = require('./services/pricingService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -54,6 +58,15 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const supabase = SUPABASE_URL && SUPABASE_SERVICE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
   : null;
+
+// Scraping pipeline configuration
+const GOOGLE_CSE_API_KEY = process.env.GOOGLE_CUSTOM_SEARCH_API_KEY;
+const GOOGLE_CSE_ID = process.env.GOOGLE_SEARCH_ENGINE_ID;
+const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+
+// Spoonacular API (ingredient cost estimation for non-Kroger stores)
+const SPOONACULAR_API_KEY = process.env.SPOONACULAR_API_KEY;
 
 // Token cache
 let accessToken = null;
@@ -846,9 +859,43 @@ function parseServings(recipeYield) {
 app.post('/api/recipe/parse', async (req, res) => {
   try {
     const { url } = req.body;
-    
+
     if (!url) {
       return res.status(400).json({ error: 'URL required' });
+    }
+
+    // Check for cached normalized version
+    if (supabase) {
+      const { data: cached } = await supabase
+        .from('scraped_recipes')
+        .select('*')
+        .eq('source_url', url)
+        .eq('scrape_status', 'normalized')
+        .single();
+
+      if (cached) {
+        console.log(`[Parse] Cache hit (normalized) for: ${url}`);
+        return res.json({
+          success: true,
+          cached: true,
+          normalized: true,
+          recipe: {
+            title: cached.title,
+            description: cached.description,
+            image_url: null,
+            prep_time: cached.prep_time,
+            cook_time: cached.cook_time,
+            total_time: cached.total_time,
+            servings: cached.servings,
+            ingredients: cached.ingredients,
+            instructions: cached.instructions,
+            cuisines: cached.cuisines || [],
+            source_url: url,
+            source_name: cached.source_domain,
+            rewritten: true
+          }
+        });
+      }
     }
 
     const response = await fetch(url, {
@@ -909,7 +956,7 @@ app.post('/api/recipe/parse', async (req, res) => {
       author: recipe.author?.name || recipe.author || null
     };
 
-    res.json({ success: true, recipe: parsedRecipe });
+    res.json({ success: true, normalized: false, recipe: parsedRecipe });
   } catch (error) {
     console.error('Recipe parsing error:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -920,9 +967,88 @@ app.post('/api/recipe/parse', async (req, res) => {
 app.post('/api/recipe/parse-with-prices', async (req, res) => {
   try {
     const { url, locationId, storeChain = 'KROGER' } = req.body;
-    
+
     if (!url) {
       return res.status(400).json({ error: 'URL required' });
+    }
+
+    // Check for cached normalized version
+    if (supabase) {
+      const { data: cached } = await supabase
+        .from('scraped_recipes')
+        .select('*')
+        .eq('source_url', url)
+        .eq('scrape_status', 'normalized')
+        .single();
+
+      if (cached) {
+        console.log(`[Parse+Prices] Cache hit (normalized) for: ${url}`);
+        // Still need to fetch prices for the cached normalized ingredients
+        let ingredientsWithPrices = (cached.ingredients || []).map(ing => ({
+          ...ing,
+          estimated_price: 2.50,
+          krogerProduct: null
+        }));
+        let totalCost = ingredientsWithPrices.length * 2.50;
+        let krogerItemsFound = 0;
+
+        if (locationId) {
+          ingredientsWithPrices = [];
+          totalCost = 0;
+          for (const ing of cached.ingredients || []) {
+            const ingName = typeof ing === 'string' ? ing : ing.name || 'ingredient';
+            const krogerProduct = await searchKrogerProduct(ingName, locationId, storeChain);
+            let estimatedPrice = 2.50;
+            if (krogerProduct) {
+              krogerItemsFound++;
+              estimatedPrice = krogerProduct.price || 2.50;
+              ingredientsWithPrices.push({
+                ...ing,
+                estimated_price: estimatedPrice,
+                krogerProduct: {
+                  name: krogerProduct.name, brand: krogerProduct.brand,
+                  size: krogerProduct.size, price: krogerProduct.price,
+                  promoPrice: krogerProduct.promoPrice, isOnSale: krogerProduct.isOnSale,
+                  url: krogerProduct.productUrl, image: krogerProduct.image
+                }
+              });
+            } else {
+              ingredientsWithPrices.push({ ...ing, estimated_price: estimatedPrice, krogerProduct: null });
+            }
+            totalCost += estimatedPrice;
+            await new Promise(resolve => setTimeout(resolve, 150));
+          }
+        }
+
+        return res.json({
+          success: true,
+          cached: true,
+          normalized: true,
+          recipe: {
+            title: cached.title,
+            description: cached.description,
+            image_url: null,
+            prep_time: cached.prep_time,
+            cook_time: cached.cook_time,
+            total_time: cached.total_time,
+            servings: cached.servings,
+            ingredients: ingredientsWithPrices,
+            instructions: cached.instructions,
+            cuisines: cached.cuisines || [],
+            source_url: url,
+            source_name: cached.source_domain,
+            rewritten: true,
+            total_cost: Math.round(totalCost * 100) / 100,
+            pricing: {
+              source: locationId ? 'kroger' : 'estimate',
+              krogerItemsFound,
+              totalIngredients: (cached.ingredients || []).length,
+              confidence: krogerItemsFound > (cached.ingredients || []).length * 0.5 ? 'high' : 'medium',
+              storeChain
+            }
+          }
+        });
+      }
     }
 
     // Fetch and parse the recipe
@@ -1055,7 +1181,7 @@ app.post('/api/recipe/parse-with-prices', async (req, res) => {
       }
     };
 
-    res.json({ success: true, recipe: parsedRecipe });
+    res.json({ success: true, normalized: false, recipe: parsedRecipe });
   } catch (error) {
     console.error('Recipe parsing error:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -1205,6 +1331,71 @@ app.post('/api/prices/search', async (req, res) => {
 });
 
 // ============================================
+// UNIFIED LIVE PRICING (Kroger + Spoonacular + Fallback)
+// ============================================
+
+// POST /api/prices/live - Get ingredient prices using tiered strategy
+app.post('/api/prices/live', async (req, res) => {
+  try {
+    const { ingredients, zipCode, storeName, storeChain, forceRefresh = false } = req.body;
+
+    if (!ingredients || !Array.isArray(ingredients) || ingredients.length === 0) {
+      return res.status(400).json({ success: false, error: 'ingredients array required' });
+    }
+
+    if (DRY_RUN) {
+      console.log('[Pricing] DRY_RUN - would fetch prices for', ingredients.length, 'ingredients');
+      const mockItems = ingredients.map(ing => ({
+        ingredient: ing.name,
+        price: FALLBACK_PRICES[ing.name?.toLowerCase()] || 2.50,
+        productName: null,
+        brand: null,
+        size: null,
+        productUrl: null,
+        isOnSale: false,
+        source: 'fallback',
+        confidence: 'low',
+        cached: false
+      }));
+      return res.json({
+        success: true,
+        items: mockItems,
+        totalCost: mockItems.reduce((sum, i) => sum + i.price, 0),
+        source: 'fallback',
+        confidence: 'low',
+        cachedCount: 0,
+        freshCount: mockItems.length,
+        fetchedAt: new Date().toISOString()
+      });
+    }
+
+    const deps = {
+      supabase,
+      searchKrogerProduct,
+      getKrogerToken,
+      spoonacularApiKey: SPOONACULAR_API_KEY,
+      krogerApiBase: KROGER_API_BASE
+    };
+
+    const result = await getIngredientPrices(deps, ingredients, {
+      zipCode,
+      storeName,
+      storeChain,
+      forceRefresh
+    });
+
+    res.json({
+      success: true,
+      ...result,
+      fetchedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Live pricing error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
 // RECIPE DISCOVERY
 // ============================================
 
@@ -1338,23 +1529,555 @@ app.post('/api/recipes/discover', async (req, res) => {
   }
 });
 
+// ============================================
+// USER ACCOUNT DELETION
+// ============================================
+
+/**
+ * DELETE /api/user/delete
+ * Permanently deletes a user account and all associated data
+ * Requires: Authorization header with Bearer token
+ */
+app.delete('/api/user/delete', async (req, res) => {
+  try {
+    // Get the authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    // Verify the token and get user info
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    const userId = user.id;
+    console.log(`[Account Deletion] Starting deletion for user ${userId}`);
+
+    // Tables to delete user data from (in order to handle foreign key constraints)
+    const tablesToDelete = [
+      'shopping_lists',
+      'pantry_items',
+      'meal_plans',
+      'budget_entries',
+      'saved_recipes',
+      'user_extracted_recipes',
+      'recipes',
+      'instacart_recipe_links',
+      'user_profiles'
+    ];
+
+    // Delete data from each table
+    for (const table of tablesToDelete) {
+      try {
+        const { error } = await supabase
+          .from(table)
+          .delete()
+          .eq('user_id', userId);
+
+        if (error) {
+          console.warn(`[Account Deletion] Warning deleting from ${table}:`, error.message);
+          // Continue with other tables even if one fails
+        } else {
+          console.log(`[Account Deletion] Deleted user data from ${table}`);
+        }
+      } catch (tableError) {
+        console.warn(`[Account Deletion] Error deleting from ${table}:`, tableError.message);
+      }
+    }
+
+    // Delete the user from Supabase Auth using admin API
+    const { error: deleteUserError } = await supabase.auth.admin.deleteUser(userId);
+
+    if (deleteUserError) {
+      console.error('[Account Deletion] Error deleting auth user:', deleteUserError);
+      return res.status(500).json({
+        error: 'Failed to delete authentication account',
+        details: deleteUserError.message
+      });
+    }
+
+    console.log(`[Account Deletion] Successfully deleted user ${userId}`);
+
+    res.json({
+      success: true,
+      message: 'Account and all associated data have been permanently deleted'
+    });
+
+  } catch (error) {
+    console.error('[Account Deletion] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// RECIPE SCRAPING PIPELINE (3-Layer System)
+// ============================================
+
+// POST /api/scrape-recipes - Run the 3-layer scraping pipeline
+app.post('/api/scrape-recipes', async (req, res) => {
+  try {
+    const {
+      query,
+      cuisines = [],
+      diets = [],
+      budget_keywords = [],
+      limit = 5,
+      layers = ['discover', 'extract', 'normalize']
+    } = req.body;
+
+    if (!query && cuisines.length === 0) {
+      return res.status(400).json({ error: 'query string or cuisines array required' });
+    }
+
+    const maxLimit = Math.min(limit, 10);
+
+    const results = {
+      discovered: [],
+      extracted: [],
+      normalized: [],
+      errors: [],
+      stats: { discovered: 0, extracted: 0, normalized: 0, failed: 0, cached: 0 }
+    };
+
+    // LAYER 1: Discovery
+    if (layers.includes('discover')) {
+      console.log('[Scraper] Layer 1: Discovering recipe URLs...');
+      const discoveredUrls = await discoverRecipeUrls(
+        query || cuisines.join(' ') + ' recipe',
+        { cuisines, diets, budgetKeywords: budget_keywords, limit: maxLimit }
+      );
+      results.discovered = discoveredUrls;
+      results.stats.discovered = discoveredUrls.length;
+
+      // Check which URLs are already in the database
+      if (supabase && discoveredUrls.length > 0) {
+        const urls = discoveredUrls.map(d => d.url);
+        const { data: existing } = await supabase
+          .from('scraped_recipes')
+          .select('source_url, scrape_status')
+          .in('source_url', urls);
+
+        const existingMap = new Map((existing || []).map(e => [e.source_url, e.scrape_status]));
+        results.discovered = discoveredUrls.map(d => ({
+          ...d,
+          already_scraped: existingMap.has(d.url),
+          scrape_status: existingMap.get(d.url) || null
+        }));
+        results.stats.cached = discoveredUrls.filter(d => existingMap.has(d.url)).length;
+      }
+    }
+
+    // LAYER 2: Extraction
+    if (layers.includes('extract')) {
+      const urlsToExtract = results.discovered
+        .filter(d => d.robotsAllowed && !d.already_scraped)
+        .slice(0, maxLimit);
+
+      console.log(`[Scraper] Layer 2: Extracting ${urlsToExtract.length} recipes...`);
+
+      for (const discovered of urlsToExtract) {
+        try {
+          const extracted = await extractRecipeFromUrl(discovered.url);
+          if (extracted) {
+            results.extracted.push(extracted);
+            results.stats.extracted++;
+
+            // Store raw extraction in database
+            if (supabase) {
+              const contentHash = crypto.createHash('sha256')
+                .update(JSON.stringify(extracted.ingredients || []))
+                .digest('hex');
+
+              await supabase.from('scraped_recipes').upsert({
+                source_url: discovered.url,
+                source_domain: discovered.domain,
+                discovery_query: query || cuisines.join(' '),
+                raw_title: extracted.title,
+                raw_ingredients: extracted.ingredients,
+                raw_instructions: extracted.instructions,
+                raw_prep_time: extracted.prep_time,
+                raw_cook_time: extracted.cook_time,
+                raw_servings: extracted.servings,
+                scrape_status: 'extracted',
+                extracted_at: new Date().toISOString(),
+                source_author: extracted.author,
+                robots_txt_allowed: true,
+                extraction_method: extracted.extraction_method || 'firecrawl',
+                content_hash: contentHash,
+                // Provide defaults for NOT NULL columns
+                title: extracted.title,
+                ingredients: extracted.ingredients,
+                instructions: extracted.instructions
+              }, { onConflict: 'source_url' });
+            }
+          }
+          // Rate limit between extractions
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (error) {
+          console.error(`[Scraper] Extraction failed for ${discovered.url}:`, error.message);
+          results.errors.push({ url: discovered.url, layer: 'extract', error: error.message });
+          results.stats.failed++;
+        }
+      }
+    }
+
+    // LAYER 3: Normalization
+    if (layers.includes('normalize')) {
+      console.log(`[Scraper] Layer 3: Normalizing ${results.extracted.length} recipes...`);
+
+      for (const extracted of results.extracted) {
+        try {
+          const normalized = await normalizeRecipe(extracted);
+          if (normalized) {
+            results.normalized.push(normalized);
+            results.stats.normalized++;
+
+            // Update database with normalized data
+            if (supabase) {
+              await supabase.from('scraped_recipes')
+                .update({
+                  title: normalized.title,
+                  description: normalized.description,
+                  ingredients: normalized.ingredients,
+                  instructions: normalized.instructions,
+                  prep_time: normalized.prep_time,
+                  cook_time: normalized.cook_time,
+                  total_time: normalized.total_time,
+                  servings: normalized.servings,
+                  cuisines: normalized.cuisines || [],
+                  diets: normalized.diets || [],
+                  estimated_cost: normalized.estimated_cost,
+                  scrape_status: normalized.normalization_skipped ? 'extracted' : 'normalized',
+                  normalized_at: new Date().toISOString(),
+                  normalization_model: normalized.normalization_model || null
+                })
+                .eq('source_url', extracted.source_url);
+            }
+          }
+        } catch (error) {
+          console.error(`[Scraper] Normalization failed for ${extracted.title}:`, error.message);
+          results.errors.push({ url: extracted.source_url, layer: 'normalize', error: error.message });
+          results.stats.failed++;
+        }
+      }
+    }
+
+    console.log(`[Scraper] Pipeline complete: ${JSON.stringify(results.stats)}`);
+    res.json({ success: true, ...results });
+
+  } catch (error) {
+    console.error('[Scraper] Pipeline error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/scraped-recipes - Retrieve normalized recipes from the database
+app.get('/api/scraped-recipes', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+
+    const { cuisine, diet, limit = 20, offset = 0 } = req.query;
+    const parsedLimit = Math.min(parseInt(limit) || 20, 50);
+    const parsedOffset = parseInt(offset) || 0;
+
+    let query = supabase
+      .from('scraped_recipes')
+      .select('*')
+      .eq('scrape_status', 'normalized')
+      .order('normalized_at', { ascending: false })
+      .range(parsedOffset, parsedOffset + parsedLimit - 1);
+
+    if (cuisine) {
+      query = query.contains('cuisines', [cuisine]);
+    }
+    if (diet) {
+      query = query.contains('diets', [diet]);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    // Map to the recipe shape the frontend expects
+    const recipes = (data || []).map(r => ({
+      id: r.id,
+      title: r.title,
+      description: r.description,
+      image_url: null, // No images stored (legal compliance)
+      prep_time: r.prep_time,
+      cook_time: r.cook_time,
+      total_time: r.total_time,
+      servings: r.servings,
+      ingredients: r.ingredients,
+      instructions: r.instructions,
+      cuisines: r.cuisines || [],
+      diets: r.diets || [],
+      total_cost: r.estimated_cost,
+      source_url: r.source_url,
+      source_name: r.source_domain,
+      source_author: r.source_author,
+      scraped: true
+    }));
+
+    res.json({ success: true, recipes, count: recipes.length });
+  } catch (error) {
+    console.error('[Scraper] Retrieval error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// RECIPE NORMALIZATION (AI Rewriting)
+// ============================================
+
+/**
+ * POST /api/recipe/normalize
+ * Takes raw recipe data and returns AI-rewritten version
+ * Caches result in scraped_recipes table for future lookups
+ */
+app.post('/api/recipe/normalize', async (req, res) => {
+  try {
+    const { title, ingredients, instructions, source_url, prep_time, cook_time, total_time, servings, cuisine, diet_tags } = req.body;
+
+    if (!title || !ingredients || !instructions) {
+      return res.status(400).json({ error: 'title, ingredients, and instructions are required' });
+    }
+
+    // Check cache first
+    if (supabase && source_url) {
+      const { data: cached } = await supabase
+        .from('scraped_recipes')
+        .select('*')
+        .eq('source_url', source_url)
+        .eq('scrape_status', 'normalized')
+        .single();
+
+      if (cached) {
+        console.log(`[Normalize] Cache hit for: ${source_url}`);
+        return res.json({
+          success: true,
+          cached: true,
+          normalized_recipe: {
+            title: cached.title,
+            description: cached.description,
+            ingredients: cached.ingredients,
+            instructions: cached.instructions,
+            prep_time: cached.prep_time,
+            cook_time: cached.cook_time,
+            total_time: cached.total_time,
+            servings: cached.servings,
+            cuisines: cached.cuisines || [],
+            diets: cached.diets || [],
+            estimated_cost: cached.estimated_cost,
+            rewritten: true
+          }
+        });
+      }
+    }
+
+    // Run normalization
+    const rawRecipe = {
+      title,
+      ingredients,
+      instructions,
+      prep_time,
+      cook_time,
+      total_time,
+      servings,
+      cuisine,
+      diet_tags,
+      source_url,
+      source_domain: source_url ? new URL(source_url).hostname.replace(/^www\./, '') : null
+    };
+
+    const normalized = await normalizeRecipe(rawRecipe);
+
+    // Cache in database
+    if (supabase && source_url) {
+      const contentHash = crypto.createHash('sha256')
+        .update(JSON.stringify(ingredients))
+        .digest('hex');
+
+      await supabase.from('scraped_recipes').upsert({
+        source_url,
+        source_domain: rawRecipe.source_domain,
+        raw_title: title,
+        raw_ingredients: ingredients,
+        raw_instructions: instructions,
+        raw_prep_time: prep_time,
+        raw_cook_time: cook_time,
+        raw_servings: servings,
+        title: normalized.title,
+        description: normalized.description,
+        ingredients: normalized.ingredients,
+        instructions: normalized.instructions,
+        prep_time: normalized.prep_time,
+        cook_time: normalized.cook_time,
+        total_time: normalized.total_time,
+        servings: normalized.servings,
+        cuisines: normalized.cuisines || [],
+        diets: normalized.diets || [],
+        estimated_cost: normalized.estimated_cost,
+        scrape_status: normalized.normalization_skipped ? 'extracted' : 'normalized',
+        normalized_at: new Date().toISOString(),
+        normalization_model: normalized.normalization_model || null,
+        extraction_method: 'user_extract',
+        content_hash: contentHash,
+        discovery_query: 'user_extract'
+      }, { onConflict: 'source_url' });
+    }
+
+    res.json({
+      success: true,
+      cached: false,
+      normalized_recipe: {
+        ...normalized,
+        rewritten: !normalized.normalization_skipped
+      }
+    });
+  } catch (error) {
+    console.error('[Normalize] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// USER EXTRACTED RECIPES
+// ============================================
+
+/**
+ * GET /api/extracted-recipes/:userId
+ * Fetch a user's extraction history
+ */
+app.get('/api/extracted-recipes/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    if (!supabase) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+
+    const { data, error } = await supabase
+      .from('user_extracted_recipes')
+      .select('*')
+      .eq('user_id', userId)
+      .order('extracted_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ success: true, recipes: data || [] });
+  } catch (error) {
+    console.error('[Extracted Recipes] Fetch error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/extracted-recipes
+ * Save an extracted recipe to user's history
+ */
+app.post('/api/extracted-recipes', async (req, res) => {
+  try {
+    const { user_id, recipe_url, recipe_title, recipe_data } = req.body;
+
+    if (!user_id || !recipe_url || !recipe_title) {
+      return res.status(400).json({ error: 'user_id, recipe_url, and recipe_title are required' });
+    }
+
+    if (!supabase) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+
+    const { data, error } = await supabase
+      .from('user_extracted_recipes')
+      .upsert({
+        user_id,
+        recipe_url,
+        recipe_title,
+        recipe_data: recipe_data || {},
+        extracted_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id,recipe_url'
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    console.log(`[Extracted Recipes] Saved "${recipe_title}" for user ${user_id}`);
+    res.json({ success: true, recipe: data });
+  } catch (error) {
+    console.error('[Extracted Recipes] Save error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * DELETE /api/extracted-recipes/:recipeId
+ * Remove an extracted recipe from history
+ */
+app.delete('/api/extracted-recipes/:recipeId', async (req, res) => {
+  try {
+    const { recipeId } = req.params;
+
+    if (!recipeId) {
+      return res.status(400).json({ error: 'recipeId is required' });
+    }
+
+    if (!supabase) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+
+    const { error } = await supabase
+      .from('user_extracted_recipes')
+      .delete()
+      .eq('id', recipeId);
+
+    if (error) throw error;
+
+    console.log(`[Extracted Recipes] Deleted recipe ${recipeId}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[Extracted Recipes] Delete error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    version: '4.0.0',
+    version: '5.0.0',
     dry_run: DRY_RUN,
     features: [
       'recipe-parsing',
       'kroger-pricing',
+      'spoonacular-pricing',
+      'unified-pricing',
       'product-search',
       'recipe-discovery',
       'price-search',
       'instacart-recipe',
       'instacart-shopping-list',
       'instacart-retailers',
-      'instacart-caching'
+      'instacart-caching',
+      'recipe-scraping',
+      'ai-normalization'
     ],
     instacart: {
       configured: !!INSTACART_API_KEY,
@@ -1363,9 +2086,17 @@ app.get('/api/health', (req, res) => {
     kroger: {
       configured: !!(KROGER_CLIENT_ID && KROGER_CLIENT_SECRET)
     },
+    spoonacular: {
+      configured: !!SPOONACULAR_API_KEY
+    },
     supabase: {
       configured: !!supabase,
       caching: !!supabase
+    },
+    scraping: {
+      google_cse: !!GOOGLE_CSE_API_KEY,
+      firecrawl: !!FIRECRAWL_API_KEY,
+      anthropic: !!ANTHROPIC_API_KEY
     }
   });
 });

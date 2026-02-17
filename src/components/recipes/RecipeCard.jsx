@@ -17,7 +17,7 @@ const formatSourceSite = (site) => {
     .join(' ');
 };
 
-export default function RecipeCard({ recipe, onSave, isSaved, onClick, householdSize = 4, pantryItems = [] }) {
+export default function RecipeCard({ recipe, onSave, isSaved, onClick, householdSize = 4, pantryItems = [], pricingConfidence = 'low' }) {
   const { toast } = useToast();
   const [isInList, setIsInList] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
@@ -193,10 +193,11 @@ export default function RecipeCard({ recipe, onSave, isSaved, onClick, household
             <DollarSign className="w-4 h-4 text-green-600" />
             <div className="flex flex-col items-end">
               <span className="font-semibold text-green-600">
-                ~${scaledCost.toFixed(2)}
+                {pricingConfidence === 'high' ? '' : '~'}${scaledCost.toFixed(2)}
               </span>
               <span className="text-[10px] text-gray-400">
-                {hasPantryDeduction ? `was ~$${originalCost.toFixed(2)}` : 'est.'}
+                {hasPantryDeduction ? `was ~$${originalCost.toFixed(2)}` :
+                 pricingConfidence === 'high' ? 'live' : 'est.'}
               </span>
             </div>
           </div>

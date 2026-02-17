@@ -54,10 +54,12 @@ export default function MealPlanner() {
   });
 
   const savedRecipeDetails = recipes.filter(r => savedRecipes.some(sr => sr.recipe_id === r.id));
+  const availableRecipes = savedRecipeDetails.length > 0 ? savedRecipeDetails : recipes;
 
   const addMealMutation = useMutation({
     mutationFn: async ({ date, mealType, recipe }) => {
       const user = await auth.me();
+      if (!user) throw new Error('Please sign in to add meals');
       const householdSize = userProfile?.household_size || 1;
       const scaledCost = ((recipe.total_cost || 0) / (recipe.servings || 4)) * householdSize;
       return entities.MealPlan.create({
@@ -75,6 +77,14 @@ export default function MealPlanner() {
       queryClient.invalidateQueries({ queryKey: ['mealPlans'] });
       setShowRecipeDialog(false);
       toast({ title: "Meal added!" });
+    },
+    onError: (error) => {
+      console.error('[MealPlanner] Failed to add meal:', error);
+      toast({
+        title: "Failed to add meal",
+        description: error.message || "Please try again.",
+        variant: "destructive"
+      });
     }
   });
 
@@ -83,6 +93,14 @@ export default function MealPlanner() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mealPlans'] });
       toast({ title: "Meal removed" });
+    },
+    onError: (error) => {
+      console.error('[MealPlanner] Failed to remove meal:', error);
+      toast({
+        title: "Failed to remove meal",
+        description: error.message || "Please try again.",
+        variant: "destructive"
+      });
     }
   });
 
@@ -191,22 +209,31 @@ export default function MealPlanner() {
             <DialogTitle>Add {selectedSlot?.mealType} for {selectedSlot && format(selectedSlot.date, 'EEE, MMM d')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            {savedRecipeDetails.length === 0 ? (
+            {availableRecipes.length === 0 ? (
               <div className="text-center py-8">
-                <p className="text-gray-500 mb-4">No saved recipes yet. Save some recipes first!</p>
+                <p className="text-gray-500 mb-4">No recipes found. Discover some recipes first!</p>
                 <Button onClick={() => navigate(createPageUrl('Home'))} className="rounded-full">Browse Recipes</Button>
               </div>
             ) : (
-              savedRecipeDetails.map(recipe => (
-                <button key={recipe.id} onClick={() => addMealMutation.mutate({ date: selectedSlot.date, mealType: selectedSlot.mealType, recipe })}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-green-50 border border-gray-100 text-left transition-colors">
-                  <img src={recipe.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=100'} alt="" className="w-16 h-16 rounded-lg object-cover" />
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-800">{recipe.title}</p>
-                    <p className="text-sm text-green-600">${(recipe.total_cost || 0).toFixed(2)}</p>
-                  </div>
-                </button>
-              ))
+              <>
+                {savedRecipeDetails.length === 0 && recipes.length > 0 && (
+                  <p className="text-xs text-amber-600 px-1">Showing all recipes. Save your favorites for quick access!</p>
+                )}
+                {availableRecipes.map(recipe => (
+                  <button
+                    key={recipe.id}
+                    disabled={addMealMutation.isPending}
+                    onClick={() => addMealMutation.mutate({ date: selectedSlot.date, mealType: selectedSlot.mealType, recipe })}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-green-50 border border-gray-100 text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <img src={recipe.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=100'} alt="" className="w-16 h-16 rounded-lg object-cover" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-800">{recipe.title}</p>
+                      <p className="text-sm text-green-600">${(recipe.total_cost || 0).toFixed(2)}</p>
+                    </div>
+                  </button>
+                ))}
+              </>
             )}
           </div>
         </DialogContent>

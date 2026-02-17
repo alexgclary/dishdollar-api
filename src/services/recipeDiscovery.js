@@ -240,8 +240,63 @@ function shuffleArray(array) {
   return shuffled;
 }
 
+/**
+ * Discover recipes using the 3-layer scraping pipeline
+ * Falls back to curated recipes if the scraping endpoint is unavailable
+ */
+export async function discoverScrapedRecipes(query, options = {}) {
+  try {
+    const response = await fetch(`${API_BASE}/api/scrape-recipes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query,
+        cuisines: options.cuisines || [],
+        diets: options.diets || [],
+        budget_keywords: options.budgetKeywords || [],
+        limit: options.limit || 5
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success && data.normalized?.length > 0) {
+        return data.normalized;
+      }
+    }
+  } catch (error) {
+    console.log('Scraping API unavailable, falling back to curated recipes');
+  }
+
+  return discoverRecipes(options);
+}
+
+/**
+ * Fetch previously scraped and normalized recipes from the database
+ */
+export async function getScrapedRecipes(options = {}) {
+  try {
+    const params = new URLSearchParams();
+    if (options.cuisine) params.set('cuisine', options.cuisine);
+    if (options.diet) params.set('diet', options.diet);
+    if (options.limit) params.set('limit', String(options.limit));
+    if (options.offset) params.set('offset', String(options.offset));
+
+    const response = await fetch(`${API_BASE}/api/scraped-recipes?${params}`);
+    if (response.ok) {
+      const data = await response.json();
+      return data.recipes || [];
+    }
+  } catch (error) {
+    console.log('Failed to fetch scraped recipes:', error);
+  }
+  return [];
+}
+
 export default {
   discoverRecipes,
+  discoverScrapedRecipes,
+  getScrapedRecipes,
   getTrendingRecipes,
   getPersonalizedRecipes,
   parseRecipeUrl,

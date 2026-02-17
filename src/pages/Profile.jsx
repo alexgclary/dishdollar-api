@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { motion } from 'framer-motion';
-import { ArrowLeft, User, MapPin, Utensils, Salad, DollarSign, Package, Bell, Save, LogOut, Shield, Store, ChevronRight } from 'lucide-react';
+import { ArrowLeft, User, MapPin, Utensils, Salad, DollarSign, Package, Bell, Save, LogOut, Shield, Store, ChevronRight, Trash2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,6 +14,9 @@ import { useToast } from '@/components/ui/use-toast';
 import PillSelector from '@/components/onboarding/PillSelector';
 import InstacartStoreSelector, { KROGER_FAMILY_RETAILERS } from '@/components/stores/InstacartStoreSelector';
 import KrogerLocationSelector from '@/components/stores/KrogerLocationSelector';
+import { topSpices } from '@/data/commonSpices';
+import { topTools } from '@/data/commonKitchenTools';
+import { topPantryItems } from '@/data/commonPantryItems';
 
 const stores = [
   'Walmart', 'Kroger', 'Whole Foods', 'Trader Joe\'s', 'Costco',
@@ -41,9 +44,9 @@ const diets = [
 ];
 
 const pantryItems = {
-  basics: ['Olive Oil', 'Salt', 'Pepper', 'Sugar', 'Flour', 'Rice', 'Pasta', 'Butter'],
-  spices: ['Garlic', 'Onions', 'Cumin', 'Paprika', 'Oregano', 'Basil', 'Cinnamon', 'Chili Powder'],
-  tools: ['Pots', 'Pans', 'Blender', 'Mixer', 'Air Fryer', 'Instant Pot', 'Oven', 'Grill']
+  'Pantry Staples': topPantryItems,
+  'Spices & Seasonings': topSpices,
+  'Kitchen Tools': topTools,
 };
 
 export default function Profile() {
@@ -54,6 +57,9 @@ export default function Profile() {
   const [profileId, setProfileId] = useState(null);
   const [isStoreDialogOpen, setIsStoreDialogOpen] = useState(false);
   const [showKrogerLocations, setShowKrogerLocations] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { data: profileData, isLoading } = useQuery({
     queryKey: ['userProfile'],
@@ -114,6 +120,37 @@ export default function Profile() {
       localStorage.removeItem('dishdollar_profile');
       localStorage.removeItem('dishdollar_auth');
       await auth.logout(window.location.origin);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== 'DELETE') {
+      toast({
+        title: 'Confirmation Required',
+        description: 'Please type DELETE to confirm account deletion',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await auth.deleteAccount();
+      toast({
+        title: 'Account Deleted',
+        description: 'Your account and all data have been permanently deleted'
+      });
+      // Redirect to home page after short delay
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 1500);
+    } catch (error) {
+      toast({
+        title: 'Deletion Failed',
+        description: error.message || 'Failed to delete account. Please try again.',
+        variant: 'destructive'
+      });
+      setIsDeleting(false);
     }
   };
 
@@ -525,6 +562,91 @@ export default function Profile() {
               )}
             </Button>
           </motion.div>
+
+          <Card className="border-red-200 bg-red-50/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-red-700">
+                <AlertTriangle className="w-5 h-5" />
+                Danger Zone
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-gray-600 mb-4">
+                Permanently delete your account and all associated data. This action cannot be undone.
+              </p>
+              <Button
+                onClick={() => setIsDeleteDialogOpen(true)}
+                variant="destructive"
+                className="rounded-xl"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Account
+              </Button>
+
+              <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-red-600">
+                      <AlertTriangle className="w-5 h-5" />
+                      Delete Account
+                    </DialogTitle>
+                    <DialogDescription className="text-left">
+                      This will permanently delete your account and all your data including:
+                      <ul className="list-disc list-inside mt-2 space-y-1">
+                        <li>Your profile and preferences</li>
+                        <li>All saved recipes</li>
+                        <li>Meal plans and shopping lists</li>
+                        <li>Pantry items and budget history</li>
+                      </ul>
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="mt-4 space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium">
+                        Type <span className="font-bold text-red-600">DELETE</span> to confirm
+                      </Label>
+                      <Input
+                        type="text"
+                        value={deleteConfirmText}
+                        onChange={(e) => setDeleteConfirmText(e.target.value)}
+                        placeholder="DELETE"
+                        className="mt-2 border-red-200 focus:border-red-400"
+                        disabled={isDeleting}
+                      />
+                    </div>
+                    <div className="flex gap-3">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsDeleteDialogOpen(false);
+                          setDeleteConfirmText('');
+                        }}
+                        className="flex-1 rounded-xl"
+                        disabled={isDeleting}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={handleDeleteAccount}
+                        disabled={deleteConfirmText !== 'DELETE' || isDeleting}
+                        className="flex-1 rounded-xl"
+                      >
+                        {isDeleting ? (
+                          'Deleting...'
+                        ) : (
+                          <>
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete Forever
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

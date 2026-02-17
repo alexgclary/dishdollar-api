@@ -1,7 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Search, X, Plus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import debounce from 'lodash/debounce';
+import { fuzzySearchOptions, highlightMatch } from '@/utils/fuzzySearch';
 
 export default function SearchablePillSelector({
   options,
@@ -14,30 +16,46 @@ export default function SearchablePillSelector({
 }) {
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filteredOptions, setFilteredOptions] = useState([]);
+  const [filteredResults, setFilteredResults] = useState([]);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const searchRef = useRef(null);
   const inputRef = useRef(null);
+  const listRef = useRef(null);
 
-  // Combine all options for searching
-  const allOptions = [...options, ...searchableOptions.filter(
-    so => !options.some(o => (o.value || o) === (so.value || so))
-  )];
-
-  // Filter options based on search query
-  useEffect(() => {
-    if (searchQuery.length >= 1) {
-      const query = searchQuery.toLowerCase();
-      const matches = allOptions.filter(opt => {
-        const value = (opt.value || opt).toLowerCase();
-        const label = (opt.label || opt.value || opt).toLowerCase();
-        return (value.includes(query) || label.includes(query)) &&
-               !selected.includes(opt.value || opt);
-      });
-      setFilteredOptions(matches.slice(0, 8));
-    } else {
-      setFilteredOptions([]);
+  // Combine all options for searching (deduped)
+  const allOptions = useMemo(() => {
+    const seen = new Set();
+    const combined = [];
+    for (const opt of [...options, ...searchableOptions]) {
+      const val = opt.value || opt;
+      if (!seen.has(val)) {
+        seen.add(val);
+        combined.push(opt);
+      }
     }
-  }, [searchQuery, allOptions, selected]);
+    return combined;
+  }, [options, searchableOptions]);
+
+  // Debounced fuzzy search
+  const performSearch = useCallback(
+    debounce((query) => {
+      if (query.length >= 1) {
+        const results = fuzzySearchOptions(query, allOptions, selected, 10);
+        setFilteredResults(results);
+        setActiveIndex(-1);
+      } else {
+        setFilteredResults([]);
+        setActiveIndex(-1);
+      }
+    }, 150),
+    [allOptions, selected]
+  );
+
+  // Trigger search on query change
+  useEffect(() => {
+    performSearch(searchQuery);
+    return () => performSearch.cancel();
+  }, [searchQuery, performSearch]);
 
   // Close search when clicking outside
   useEffect(() => {
@@ -58,6 +76,47 @@ export default function SearchablePillSelector({
     }
   }, [showSearch]);
 
+  // Scroll active item into view
+  useEffect(() => {
+    if (activeIndex >= 0 && listRef.current) {
+      const items = listRef.current.querySelectorAll('[data-search-item]');
+      if (items[activeIndex]) {
+        items[activeIndex].scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }, [activeIndex]);
+
+  // Keyboard navigation
+  const handleKeyDown = (e) => {
+    if (!showSearch) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setActiveIndex(prev =>
+          prev < filteredResults.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setActiveIndex(prev =>
+          prev > 0 ? prev - 1 : filteredResults.length - 1
+        );
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (activeIndex >= 0 && activeIndex < filteredResults.length) {
+          selectFromSearch(filteredResults[activeIndex].option);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setShowSearch(false);
+        setSearchQuery('');
+        break;
+    }
+  };
+
   const toggleOption = (option) => {
     const value = option.value || option;
     if (selected.includes(value)) {
@@ -73,7 +132,7 @@ export default function SearchablePillSelector({
       onChange([...selected, value]);
     }
     setSearchQuery('');
-    setShowSearch(false);
+    inputRef.current?.focus();
   };
 
   // Get display info for selected items (including ones from searchableOptions)
@@ -92,6 +151,22 @@ export default function SearchablePillSelector({
       .filter(s => !options.some(o => (o.value || o) === s))
       .map(s => getOptionDisplay(s))
   ];
+
+  // Render highlighted text segments
+  const HighlightedText = ({ text, query }) => {
+    const segments = highlightMatch(text, query);
+    return (
+      <span>
+        {segments.map((seg, i) =>
+          seg.highlighted ? (
+            <mark key={i} className="bg-yellow-200 text-yellow-900 rounded px-0.5">{seg.text}</mark>
+          ) : (
+            <span key={i}>{seg.text}</span>
+          )
+        )}
+      </span>
+    );
+  };
 
   return (
     <div className="space-y-3">
@@ -166,12 +241,16 @@ export default function SearchablePillSelector({
                       ref={inputRef}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={handleKeyDown}
                       placeholder={placeholder}
                       className="pl-9 pr-8 rounded-full border-gray-200"
+                      role="combobox"
+                      aria-expanded={filteredResults.length > 0}
+                      aria-activedescendant={activeIndex >= 0 ? `search-item-${activeIndex}` : undefined}
                     />
                     {searchQuery && (
                       <button
-                        onClick={() => setSearchQuery('')}
+                        onClick={() => { setSearchQuery(''); inputRef.current?.focus(); }}
                         className="absolute right-3 top-1/2 -translate-y-1/2"
                       >
                         <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
@@ -180,22 +259,37 @@ export default function SearchablePillSelector({
                   </div>
                 </div>
 
-                <div className="max-h-48 overflow-y-auto">
-                  {filteredOptions.length > 0 ? (
-                    filteredOptions.map((option) => {
+                <div className="max-h-48 overflow-y-auto" ref={listRef} role="listbox">
+                  {filteredResults.length > 0 ? (
+                    filteredResults.map((result, index) => {
+                      const { option, matchedVia } = result;
                       const value = option.value || option;
                       const label = option.label || option;
                       const icon = option.icon;
+                      const isActive = index === activeIndex;
 
                       return (
                         <button
                           key={value}
+                          id={`search-item-${index}`}
+                          data-search-item
+                          role="option"
+                          aria-selected={isActive}
                           onClick={() => selectFromSearch(option)}
-                          className="w-full px-4 py-3 text-left hover:bg-green-50 flex items-center gap-2 text-sm transition-colors"
+                          onMouseEnter={() => setActiveIndex(index)}
+                          className={`w-full px-4 py-3 text-left flex items-center gap-2 text-sm transition-colors
+                            ${isActive ? 'bg-green-50' : 'hover:bg-gray-50'}`}
                         >
                           {icon && <span>{icon}</span>}
-                          <span className="flex-1">{label}</span>
-                          <Plus className="w-4 h-4 text-green-500" />
+                          <span className="flex-1">
+                            <HighlightedText text={label} query={searchQuery} />
+                            {matchedVia && (
+                              <span className="text-xs text-gray-400 ml-1.5">
+                                ({matchedVia})
+                              </span>
+                            )}
+                          </span>
+                          <Plus className={`w-4 h-4 ${isActive ? 'text-green-600' : 'text-green-500'}`} />
                         </button>
                       );
                     })

@@ -5,14 +5,16 @@ import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { shoppingListStorage } from '@/utils/shoppingListStorage';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Clock, Users, DollarSign, Heart, Plus, Minus, ShoppingCart, ChefHat, Leaf, Calendar, Copy, Check, ListPlus, RefreshCw, Zap, Store, ExternalLink, Maximize2, Flame, Beef, Wheat, Droplets } from 'lucide-react';
+import { ArrowLeft, Clock, Users, DollarSign, Heart, Plus, Minus, ShoppingCart, ChefHat, Leaf, Calendar, Copy, Check, ListPlus, RefreshCw, Zap, Store, ExternalLink, Maximize2, Flame, Beef, Wheat, Droplets, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { hasRealTimePricing } from '@/components/utils/pricingDatabase';
+import { usePricing } from '@/hooks/usePricing';
+import { useRecipeNormalization } from '@/hooks/useRecipeNormalization';
 import { RecipeDetailsSkeleton } from '@/components/recipes/RecipeSkeletons';
+import MealPlanModal from '@/components/MealPlanModal';
 
 export default function RecipeDetails() {
   const navigate = useNavigate();
@@ -26,10 +28,9 @@ export default function RecipeDetails() {
   const [addedToList, setAddedToList] = useState(false);
   const [manualPantryItems, setManualPantryItems] = useState([]);
   const [itemsInList, setItemsInList] = useState(false);
-  const [livePrices, setLivePrices] = useState({});
-  const [isPricingLoading, setIsPricingLoading] = useState(false);
   const [showFullScreenInstructions, setShowFullScreenInstructions] = useState(false);
   const [isInstacartLoading, setIsInstacartLoading] = useState(false);
+  const [showMealPlanModal, setShowMealPlanModal] = useState(false);
 
   const urlParams = new URLSearchParams(window.location.search);
   const recipeId = urlParams.get('id');
@@ -52,61 +53,18 @@ export default function RecipeDetails() {
     }
   });
 
-  // Check if user's store supports real-time pricing
-  const supportsLivePricing = hasRealTimePricing(profileData?.preferred_store);
-
   // Get API base URL from environment
   const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://budgetbite-api-69cb51842c10.herokuapp.com';
 
-  // Fetch live prices from Kroger API
-  const fetchLivePrices = async () => {
-    if (!recipe?.ingredients?.length || !supportsLivePricing) return;
-
-    setIsPricingLoading(true);
-    try {
-      const response = await fetch(`${API_BASE}/api/prices/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ingredients: recipe.ingredients.map(i => ({
-            name: i.name,
-            amount: i.amount,
-            unit: i.unit
-          })),
-          zipCode: profileData?.location?.zip_code || '10001'
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.items) {
-          const priceMap = {};
-          data.items.forEach(item => {
-            priceMap[item.ingredient?.toLowerCase() || item.name?.toLowerCase()] = {
-              price: item.price,
-              product: item.productName,
-              productUrl: item.productUrl || item.url || null,
-              source: 'kroger'
-            };
-          });
-          setLivePrices(priceMap);
-          toast({
-            title: "Prices Updated!",
-            description: `Live prices from ${profileData?.preferred_store || 'Kroger'}`
-          });
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch live prices:', error);
-      toast({
-        title: "Pricing Unavailable",
-        description: "Using estimated prices",
-        variant: "destructive"
-      });
-    } finally {
-      setIsPricingLoading(false);
-    }
-  };
+  // Unified pricing hook (Kroger + Spoonacular + Fallback)
+  const {
+    pricing,
+    isLoading: isPricingLoading,
+    fetchPricing,
+    refresh: refreshPricing,
+    pricingSource,
+    confidence: pricingConfidence
+  } = usePricing(recipe?.ingredients, profileData, { autoFetch: true });
 
   const { data: savedRecipes = [] } = useQuery({
     queryKey: ['savedRecipes'],
@@ -169,6 +127,40 @@ export default function RecipeDetails() {
     }
   }, [profileData]);
 
+  // AI recipe normalization (rewriting)
+  const { normalizedRecipe, isNormalizing, normalize } = useRecipeNormalization();
+
+  // Trigger normalization for recipes that haven't been rewritten
+  useEffect(() => {
+    if (recipe && !recipe.rewritten && !isNormalizing && !normalizedRecipe && recipe.instructions?.length > 0) {
+      normalize(recipe);
+    }
+  }, [recipe?.id]);
+
+  // Apply normalized data when ready
+  useEffect(() => {
+    if (normalizedRecipe && recipe) {
+      const updated = {
+        ...recipe,
+        title: normalizedRecipe.title || recipe.title,
+        description: normalizedRecipe.description || recipe.description,
+        instructions: normalizedRecipe.instructions || recipe.instructions,
+        cuisines: normalizedRecipe.cuisines?.length ? normalizedRecipe.cuisines : recipe.cuisines,
+        diets: normalizedRecipe.diets?.length ? normalizedRecipe.diets : recipe.diets,
+        rewritten: true
+      };
+      setRecipe(updated);
+      // Persist rewritten data back to the entity
+      entities.Recipe.update(recipe.id, {
+        instructions: updated.instructions,
+        description: updated.description,
+        cuisines: updated.cuisines,
+        diets: updated.diets,
+        rewritten: true
+      }).catch(err => console.error('Failed to persist normalization:', err));
+    }
+  }, [normalizedRecipe]);
+
   // Check if recipe items are already in shopping list
   useEffect(() => {
     if (recipe?.title) {
@@ -190,12 +182,17 @@ export default function RecipeDetails() {
   };
 
   const getIngredientPrice = (ing) => {
-    // Check for live price first
-    const livePrice = livePrices[ing.name?.toLowerCase()];
-    if (livePrice) {
-      return livePrice.price;
-    }
+    const pricedItem = pricing?.items?.find(
+      item => item.ingredient?.toLowerCase() === ing.name?.toLowerCase()
+    );
+    if (pricedItem) return pricedItem.price;
     return ing.estimated_price || 2.50;
+  };
+
+  const getIngredientPriceInfo = (ing) => {
+    return pricing?.items?.find(
+      item => item.ingredient?.toLowerCase() === ing.name?.toLowerCase()
+    ) || null;
   };
 
   const calculateTotalCost = () => {
@@ -210,7 +207,7 @@ export default function RecipeDetails() {
     return Math.max(total, 0);
   };
 
-  const hasLivePrices = Object.keys(livePrices).length > 0;
+  const hasLivePrices = pricingSource === 'kroger' || pricingSource === 'spoonacular';
 
   const getShoppingItems = () => {
     if (!recipe?.ingredients) return [];
@@ -256,6 +253,9 @@ export default function RecipeDetails() {
     if (!recipe) return;
 
     setIsInstacartLoading(true);
+    console.log('[Instacart] Starting request...');
+    console.log('[Instacart] API_BASE:', API_BASE);
+
     try {
       // Get shopping items (excludes pantry items, applies serving scale)
       const shoppingItems = getShoppingItems();
@@ -267,21 +267,30 @@ export default function RecipeDetails() {
         unit: item.unit || ''
       }));
 
-      const response = await fetch(`${API_BASE}/api/instacart/recipe`, {
+      const requestBody = {
+        recipe_id: recipe.id,
+        title: recipe.title,
+        image_url: recipe.image_url,
+        ingredients: ingredients,
+        instructions: recipe.instructions,
+        servings: servings,
+        cooking_time: (recipe.prep_time || 0) + (recipe.cook_time || 0)
+      };
+
+      const requestUrl = `${API_BASE}/api/instacart/recipe`;
+      console.log('[Instacart] POST', requestUrl);
+      console.log('[Instacart] Request body:', requestBody);
+
+      const response = await fetch(requestUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipe_id: recipe.id,
-          title: recipe.title,
-          image_url: recipe.image_url,
-          ingredients: ingredients,
-          instructions: recipe.instructions,
-          servings: servings,
-          cooking_time: (recipe.prep_time || 0) + (recipe.cook_time || 0)
-        })
+        body: JSON.stringify(requestBody)
       });
 
+      console.log('[Instacart] Response status:', response.status);
+
       const data = await response.json();
+      console.log('[Instacart] Response data:', data);
 
       if (!response.ok) {
         throw new Error(data.error || `API error: ${response.status}`);
@@ -295,6 +304,8 @@ export default function RecipeDetails() {
           instacartUrl += `${separator}retailer_key=${profileData.preferred_retailer_key}`;
         }
 
+        console.log('[Instacart] Opening URL:', instacartUrl);
+
         // Open Instacart recipe page in new tab
         window.open(instacartUrl, '_blank');
         toast({
@@ -302,10 +313,11 @@ export default function RecipeDetails() {
           description: "Your recipe is ready! Complete your order on Instacart.",
         });
       } else {
+        console.error('[Instacart] No URL in response:', data);
         throw new Error('No Instacart URL returned');
       }
     } catch (error) {
-      console.error('Instacart error:', error);
+      console.error('[Instacart] Error:', error);
       toast({
         title: "Unable to connect to Instacart",
         description: error.message || "Please try again later.",
@@ -391,6 +403,7 @@ export default function RecipeDetails() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Ingredients</CardTitle>
                 <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Servings</span>
                   <Button size="icon" variant="outline" onClick={() => setServings(Math.max(1, servings - 1))} className="rounded-full w-8 h-8"><Minus className="w-4 h-4" /></Button>
                   <span className="text-lg font-semibold w-12 text-center">{servings}</span>
                   <Button size="icon" variant="outline" onClick={() => setServings(servings + 1)} className="rounded-full w-8 h-8"><Plus className="w-4 h-4" /></Button>
@@ -417,26 +430,33 @@ export default function RecipeDetails() {
                           </div>
                           <span className={isInPantry ? 'text-green-800 font-medium' : 'text-gray-800'}>{(ing.amount * scale).toFixed(1)} {ing.unit} {ing.name}</span>
                         </div>
-                        <span className={`text-sm font-semibold ${isInPantry ? 'text-green-600' : livePrices[ing.name?.toLowerCase()] ? 'text-blue-600' : 'text-gray-600'}`}>
+                        <span className={`text-sm font-semibold ${isInPantry ? 'text-green-600' : (() => { const info = getIngredientPriceInfo(ing); return info?.confidence === 'high' ? 'text-blue-600' : info?.confidence === 'medium' ? 'text-amber-600' : 'text-gray-600'; })()}`}>
                           {isInPantry ? 'In pantry' : (
                             <span className="flex items-center gap-1">
-                              {livePrices[ing.name?.toLowerCase()]?.productUrl ? (
-                                <a
-                                  href={livePrices[ing.name?.toLowerCase()].productUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="hover:underline flex items-center gap-1 text-blue-600"
-                                >
-                                  ${(getIngredientPrice(ing) * scale).toFixed(2)}
-                                  <ExternalLink className="w-3 h-3" />
-                                </a>
-                              ) : (
-                                <>${(getIngredientPrice(ing) * scale).toFixed(2)}</>
-                              )}
-                              {livePrices[ing.name?.toLowerCase()] && !livePrices[ing.name?.toLowerCase()]?.productUrl && (
-                                <Zap className="w-3 h-3 text-blue-500" />
-                              )}
+                              {(() => {
+                                const info = getIngredientPriceInfo(ing);
+                                const priceText = `${info?.confidence !== 'high' ? '~' : ''}$${(getIngredientPrice(ing) * scale).toFixed(2)}`;
+                                if (info?.productUrl) {
+                                  return (
+                                    <a
+                                      href={info.productUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="hover:underline flex items-center gap-1 text-blue-600"
+                                    >
+                                      {priceText}
+                                      <ExternalLink className="w-3 h-3" />
+                                    </a>
+                                  );
+                                }
+                                return <>{priceText}</>;
+                              })()}
+                              {(() => {
+                                const info = getIngredientPriceInfo(ing);
+                                if (info?.confidence === 'high' && !info?.productUrl) return <Zap className="w-3 h-3 text-blue-500" />;
+                                return null;
+                              })()}
                             </span>
                           )}
                         </span>
@@ -449,7 +469,21 @@ export default function RecipeDetails() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Instructions</CardTitle>
+                <div className="flex items-center gap-2">
+                  <CardTitle>Instructions</CardTitle>
+                  {isNormalizing && (
+                    <span className="flex items-center gap-1.5 text-xs text-amber-600 font-medium bg-amber-50 px-2 py-1 rounded-full">
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      Rewriting...
+                    </span>
+                  )}
+                  {recipe.rewritten && !isNormalizing && (
+                    <span className="flex items-center gap-1.5 text-xs text-green-600 font-medium bg-green-50 px-2 py-1 rounded-full">
+                      <Sparkles className="w-3 h-3" />
+                      AI Rewritten
+                    </span>
+                  )}
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -474,7 +508,7 @@ export default function RecipeDetails() {
           </div>
 
           <div className="space-y-6">
-            <Card className="sticky top-6">
+            <Card>
               <CardHeader><CardTitle className="flex items-center gap-2"><DollarSign className="w-5 h-5 text-green-600" />Cost Breakdown</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -483,19 +517,24 @@ export default function RecipeDetails() {
 
                   {/* Pricing Source Indicator */}
                   <div className="pt-2 border-t border-gray-100">
-                    {hasLivePrices ? (
+                    {pricingConfidence === 'high' ? (
                       <p className="text-xs text-blue-600 flex items-center gap-1">
                         <Zap className="w-3 h-3" />
                         Live prices from {profileData?.preferred_store || 'Kroger'}
+                      </p>
+                    ) : pricingConfidence === 'medium' ? (
+                      <p className="text-xs text-amber-600 flex items-center gap-1">
+                        <Store className="w-3 h-3" />
+                        Estimated prices via Spoonacular
                       </p>
                     ) : (
                       <div>
                         <p className="text-xs text-gray-500 flex items-center gap-1">
                           <Store className="w-3 h-3" />
-                          Estimated prices
+                          Approximate prices
                         </p>
                         <p className="text-[10px] text-gray-400 mt-1">
-                          Actual prices may vary. Click "Get Live Prices" for current store prices.
+                          Actual prices may vary.
                         </p>
                       </div>
                     )}
@@ -508,22 +547,20 @@ export default function RecipeDetails() {
                   )}
                 </div>
 
-                {/* Live Pricing Button */}
-                {supportsLivePricing && (
-                  <Button
-                    onClick={fetchLivePrices}
-                    disabled={isPricingLoading}
-                    variant="outline"
-                    className="w-full rounded-full border-blue-300 text-blue-600 hover:bg-blue-50"
-                  >
-                    {isPricingLoading ? (
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Zap className="w-4 h-4 mr-2" />
-                    )}
-                    {hasLivePrices ? 'Refresh Live Prices' : 'Get Live Prices'}
-                  </Button>
-                )}
+                {/* Refresh Pricing Button */}
+                <Button
+                  onClick={refreshPricing}
+                  disabled={isPricingLoading}
+                  variant="outline"
+                  className={`w-full rounded-full ${pricingConfidence === 'high' ? 'border-blue-300 text-blue-600 hover:bg-blue-50' : 'border-amber-300 text-amber-600 hover:bg-amber-50'}`}
+                >
+                  {isPricingLoading ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Zap className="w-4 h-4 mr-2" />
+                  )}
+                  {hasLivePrices ? 'Refresh Prices' : 'Get Prices'}
+                </Button>
 
                 <div className="space-y-2 pt-4">
                   <Button onClick={() => addToBudgetMutation.mutate()} disabled={addToBudgetMutation.isPending} className="w-full rounded-full bg-green-500 hover:bg-green-600">
@@ -546,7 +583,7 @@ export default function RecipeDetails() {
                     )}
                   </Button>
 
-                  <Button variant="outline" onClick={() => navigate(createPageUrl('MealPlanner'))} className="w-full rounded-full">
+                  <Button variant="outline" onClick={() => setShowMealPlanModal(true)} className="w-full rounded-full">
                     <Calendar className="w-4 h-4 mr-2" />Add to Meal Plan
                   </Button>
 
@@ -716,6 +753,15 @@ export default function RecipeDetails() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Meal Plan Modal */}
+      <MealPlanModal
+        open={showMealPlanModal}
+        onOpenChange={setShowMealPlanModal}
+        recipe={recipe}
+        servings={servings}
+        userProfile={userProfile}
+      />
 
       {/* Full Screen Instructions Modal */}
       <Dialog open={showFullScreenInstructions} onOpenChange={setShowFullScreenInstructions}>

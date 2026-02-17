@@ -164,6 +164,55 @@ export const auth = {
    */
   isDemoMode() {
     return !isSupabaseConfigured;
+  },
+
+  /**
+   * Permanently delete user account and all associated data
+   * @returns {Promise<{success: boolean, message: string}>}
+   */
+  async deleteAccount() {
+    if (!isSupabaseConfigured || !supabase) {
+      // Demo mode - just clear localStorage
+      localStorage.clear();
+      return { success: true, message: 'Demo account cleared' };
+    }
+
+    try {
+      // Get current session for authorization
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        throw new Error('Not authenticated');
+      }
+
+      // Call backend to delete all user data
+      const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://budgetbite-api-69cb51842c10.herokuapp.com';
+
+      const response = await fetch(`${API_BASE}/api/user/delete`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete account');
+      }
+
+      // Clear all local data
+      localStorage.clear();
+
+      // Sign out locally
+      await supabase.auth.signOut();
+
+      return { success: true, message: data.message };
+    } catch (error) {
+      console.error('Account deletion error:', error);
+      throw error;
+    }
   }
 };
 
