@@ -147,7 +147,9 @@ export default function Profile() {
     } catch (error) {
       toast({
         title: 'Deletion Failed',
-        description: error.message || 'Failed to delete account. Please try again.',
+        description: error.message === 'Not authenticated'
+            ? 'Your session has expired. Please log in again and retry.'
+            : error.message || 'Failed to delete account. Please try again.',
         variant: 'destructive'
       });
       setIsDeleting(false);

@@ -178,22 +178,36 @@ export const auth = {
     }
 
     try {
-      // Get current session for authorization
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      // Check if a Supabase session exists
+      const { data: { user } } = await supabase.auth.getUser();
 
-      if (sessionError || !session) {
-        throw new Error('Not authenticated');
+      if (!user) {
+        // No Supabase session — data lives only in localStorage (demo/local state)
+        localStorage.clear();
+        return { success: true, message: 'Account data cleared' };
+      }
+
+      // Get session for access token; refresh if stale
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        const { data: refreshData } = await supabase.auth.refreshSession();
+        session = refreshData?.session;
+      }
+
+      if (!session?.access_token) {
+        throw new Error('Session expired. Please log in again.');
       }
 
       // Call backend to delete all user data
       const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://budgetbite-api-69cb51842c10.herokuapp.com';
 
-      const response = await fetch(`${API_BASE}/api/user/delete`, {
+      const response = await fetch(`${API_BASE}/api/users/delete`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({ user_id: user.id })
       });
 
       const data = await response.json();

@@ -42,13 +42,28 @@
 
 ### Instacart Developer Platform (IDP)
 
+**Current Status**: Development API key (Public API - Sandbox Environment)
+
+**CRITICAL LIMITATION**: The Instacart IDP Public API does **NOT** provide:
+- ❌ Product pricing data
+- ❌ Product listings or SKUs
+- ❌ Inventory/availability information
+- ❌ Real-time product search
+- ✅ **ONLY generates shoppable cart links** to Instacart Marketplace
+
+**Future Upgrade Path**: Apply for **Instacart IDP Partner API** once MVP is live:
+- ✅ Real-time product search with pricing
+- ✅ Product availability data
+- ✅ Retailer location finder
+- 📋 Requires: Working demo → Approval process (~3 weeks)
+
 **Important**: Instacart IDP generates **links** to Instacart Marketplace pages. It does NOT:
-- Provide pricing data
-- Create carts directly in our app
+- Provide pricing data directly to our app
+- Create carts visible in our app
 - Show individual store locations (only retailer brands)
 - Embed checkout in our app
 
-**Current Status**: Development API key (sandbox environment)
+**User Flow**: User clicks "Shop with Instacart" → Redirected to Instacart.com → Reviews products → Checks out on Instacart
 
 #### Base URLs
 ```
@@ -163,37 +178,90 @@ https://www.instacart.com/store/recipes/abc123?retailer_key=king_soopers
 
 ---
 
-### Kroger API
+### Spoonacular API
 
-Direct integration with Kroger-family stores. Provides real-time pricing (unlike Instacart).
+**Purpose**: Package-based price estimation and recipe data enrichment
+
+**Status**: Active (Primary pricing source until Instacart Partner API access)
 
 #### Base URL
 ```
-https://api.kroger.com/v1
+https://api.spoonacular.com
 ```
 
 #### Authentication
-OAuth 2.0 Client Credentials flow:
+API Key in query parameter or header:
 ```
-POST /connect/oauth2/token
-Authorization: Basic base64(client_id:client_secret)
-Body: grant_type=client_credentials&scope=product.compact
+?apiKey=YOUR_API_KEY
 ```
 
-#### Endpoints
+#### Key Endpoints
 
-**Find Stores**
+**Get Ingredient Information**
 ```
-GET /locations?filter.zipCode.near=80202&filter.radiusInMiles=10
+GET /food/ingredients/{id}/information?amount=1&unit=jar
+```
+Returns estimated price for purchasable package size.
+
+**Parse Ingredients**
+```
+POST /recipes/parseIngredients
+```
+Converts ingredient text to structured data with pricing estimates.
+
+**Grocery Product Search**
+```
+GET /food/products/search?query=mayonnaise&number=5
+```
+Finds actual grocery products with package sizes and prices.
+
+#### Package-Based Pricing Configuration
+
+**Critical**: Configure API calls to request package-level pricing, NOT unit-level:
+
+```javascript
+// WRONG - Returns price for 2 tbsp ($0.16)
+const response = await fetch(
+  `https://api.spoonacular.com/food/ingredients/estimate?
+   ingredientName=mayonnaise&
+   amount=2&
+   unit=tablespoon`
+);
+
+// RIGHT - Returns price for jar ($5.99)
+const response = await fetch(
+  `https://api.spoonacular.com/food/products/search?
+   query=mayonnaise&
+   number=1`
+);
+// Then extract package size and price from product data
 ```
 
-**Search Products**
-```
-GET /products?filter.term=chicken&filter.locationId=01234567
-```
+**Implementation Strategy**:
+1. Search for product by ingredient name
+2. Get first result (most popular product)
+3. Extract: `title` (e.g., "Hellmann's Real Mayo 30oz"), `price`, `image`
+4. Store in `product_packages` cache table
+5. Display: "Mayonnaise (jar) - $5.99" with tooltip "Recipe uses 2 tbsp"
 
-#### Supported Store Chains
-Kroger, Ralphs, King Soopers, Fry's, Smith's, Fred Meyer, QFC, Harris Teeter, Food 4 Less, Pick 'n Save, Metro Market, Mariano's, Dillons, Baker's, City Market
+#### Rate Limits
+- Free tier: 150 requests/day
+- Paid tier: Based on plan
+- **Recommendation**: Cache all price lookups in database
+
+---
+
+### ~~Kroger API~~ (DEPRECATED - Removed)
+
+**Decision**: Abandoned Kroger API integration
+
+**Reasoning**:
+- Creates imbalanced UX (all Kroger stores vs limited other brands)
+- Instacart coverage includes Kroger-family stores anyway
+- Maintenance overhead not justified
+- User feedback: Prefer consistency across all stores
+
+**Migration Path**: All pricing now handled via Spoonacular → Future Instacart Partner API
 
 ---
 
@@ -201,17 +269,34 @@ Kroger, Ralphs, King Soopers, Fry's, Smith's, Fred Meyer, QFC, Harris Teeter, Fo
 
 **Base URL**: `https://budgetbite-api-69cb51842c10.herokuapp.com`
 
+### Core Endpoints
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/health` | Health check with feature flags |
-| POST | `/api/instacart/recipe` | Create Instacart recipe page |
+| POST | `/api/instacart/recipe` | Create Instacart recipe cart link |
 | POST | `/api/recipe/parse` | Parse recipe from URL |
-| POST | `/api/recipe/parse-with-prices` | Parse recipe + get Kroger prices |
-| GET | `/api/kroger/locations` | Find Kroger stores by ZIP |
-| GET | `/api/kroger/products` | Search Kroger products |
-| POST | `/api/prices/search` | Get prices for ingredient list |
-| POST | `/api/prices/estimate` | Estimate prices (fallback) |
 | POST | `/api/recipes/discover` | Discover recipes by category |
+
+### Pricing Endpoints (NEW)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/prices/package-lookup` | Get package-based price for ingredient |
+| POST | `/api/prices/recipe-total` | Calculate total recipe cost (pantry-aware) |
+| POST | `/api/prices/meal-plan-aggregate` | Aggregate & optimize meal plan shopping list |
+| PUT | `/api/pantry/toggle/:recipeId/:ingredientId` | Toggle ingredient pantry status |
+| GET | `/api/pantry/:userId` | Get user's pantry items |
+
+### Deprecated Endpoints (Removed)
+
+| Method | Endpoint | Status |
+|--------|----------|--------|
+| ~~GET~~ | ~~/api/kroger/locations~~ | REMOVED - Kroger API deprecated |
+| ~~GET~~ | ~~/api/kroger/products~~ | REMOVED - Kroger API deprecated |
+| ~~POST~~ | ~~/api/recipe/parse-with-prices~~ | REMOVED - Replaced with package-lookup |
+| ~~POST~~ | ~~/api/prices/search~~ | REMOVED - Unit-based pricing deprecated |
+| ~~POST~~ | ~~/api/prices/estimate~~ | REMOVED - Replaced with package-lookup |
 
 ---
 
@@ -224,24 +309,53 @@ Kroger, Ralphs, King Soopers, Fry's, Smith's, Fred Meyer, QFC, Harris Teeter, Fo
 - `preferred_retailer_key` - saved Instacart retailer preference
 - `preferred_store` - legacy store name field
 - `location` - JSON with zip_code, city, state
+- `pantry_items` - JSON array of items user has on hand (from onboarding)
 
 **recipes**
 - Saved/imported recipes
 - Links to ingredients, instructions
+- `base_price` - Total cost if buying all ingredients
+- `pantry_aware_price` - Cost after excluding pantry items
 
 **meal_plans**
 - Weekly meal planning data
 - Links to recipes by day/meal
+- `aggregated_shopping_list` - JSON of shared ingredients across recipes
 
 **shopping_lists**
 - User shopping lists
 - Items with quantities, checked status
+- `source` - 'manual' | 'recipe' | 'meal_plan'
 
-**pantry_items**
+**pantry_items** (NEW - individual table)
 - User's pantry inventory
-- Used for excluding items from shopping
+- `user_id`, `ingredient_name`, `has_item` (boolean)
+- Used for excluding items from shopping & price calculation
+- Synced with onboarding data
 
-**instacart_recipe_links** (cache table)
+**product_packages** (NEW - caching table)
+- Cached package-level pricing from Spoonacular
+- `ingredient_name`, `product_title`, `package_size`, `price`, `image_url`
+- `source` - 'spoonacular' | 'user_submitted' | 'instacart_partner'
+- `last_updated` - Timestamp for cache invalidation (7-day expiry)
+- Indexed by `ingredient_name` for fast lookups
+
+**recipe_ingredients** (NEW - junction table with pricing)
+- Links recipes to ingredients with quantities
+- `recipe_id`, `ingredient_name`, `amount`, `unit`
+- `package_id` - FK to product_packages
+- `is_pantry_item` - Boolean (user toggle)
+- `display_price` - Package price or $0 if pantry item
+- Enables per-ingredient cost tracking
+
+**meal_plan_aggregation** (NEW - smart shopping optimization)
+- Aggregated ingredients across a meal plan
+- `meal_plan_id`, `ingredient_name`, `total_amount`, `total_unit`
+- `package_id`, `shared_across_recipes` - Array of recipe IDs using this ingredient
+- `amortized_cost_per_recipe` - Package price / number of recipes
+- Auto-calculated when meal plan is updated
+
+**instacart_recipe_links** (existing - cache table)
 - Caches generated Instacart URLs
 - Expires after 13 days (Instacart links expire after 14)
 - Keyed by: recipe_id, ingredients_hash, servings
@@ -297,20 +411,23 @@ VITE_INSTACART_ENV=sandbox  # or "production"
 
 ### Backend (.env)
 ```bash
-# Kroger API
-KROGER_CLIENT_ID=your-client-id
-KROGER_CLIENT_SECRET=your-client-secret
+# Spoonacular API (Primary pricing source)
+SPOONACULAR_API_KEY=your-spoonacular-key
 
 # Instacart API
 INSTACART_API_KEY=your-api-key
 INSTACART_ENV=sandbox  # or "production"
 
-# Supabase (for caching)
+# Supabase (for caching and database)
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_KEY=your-service-role-key
 
 # Server
 PORT=3000
+
+# Deprecated (Remove these)
+# KROGER_CLIENT_ID=removed
+# KROGER_CLIENT_SECRET=removed
 ```
 
 ---
@@ -354,23 +471,44 @@ heroku logs --tail --app budgetbite-api
 
 ---
 
-## Current Priorities
+## Current Priorities (February 2026)
 
-### Immediate
-1. **Store Selector Onboarding** - Call Instacart retailers endpoint with ZIP, show available brands, save preference
-2. **Append retailer_key** - All generated Instacart URLs should include user's preferred retailer
-3. **Centralize API_BASE** - Move hardcoded Heroku URL to environment variable
+### 🚨 CRITICAL - Pricing Architecture Overhaul
+**Status**: In Development  
+**Goal**: Move from inaccurate unit-based pricing to package-based pricing with pantry awareness
 
-### Short-term
-4. **Production Instacart Key** - Apply for production access, update environment
-5. **Affiliate Tracking** - Add UTM parameters for Instacart affiliate program
-6. **Recipe URL Caching** - Ensure cache is working to reduce API calls
+#### Phase 1: Package-Based Pricing (Week 1)
+- Configure Spoonacular to estimate based on purchasable units (jars, bottles, bunches)
+- Create `product_packages` table to cache package information
+- Update frontend to show: "Mayonnaise (30oz jar) - $5.99 ⓘ Recipe uses 2 tbsp"
+- Remove Kroger API integration (creates imbalanced UX - Instacart covers all stores anyway)
+
+#### Phase 2: Pantry Awareness (Week 2)  
+- Individual ingredient toggle: "Have it" vs "Need to buy"
+- Integration with onboarding pantry data
+- Two price views: "Total cost" vs "Cost for you"
+- Real-time cost recalculation on toggle
+
+#### Phase 3: Smart Shopping List Aggregation (Week 3)
+- Multi-recipe ingredient analysis across meal plan
+- Shared ingredient detection (mayo used in 3 recipes → buy once)
+- Amortized cost allocation per recipe
+- Optimized shopping list with quantities
+
+### 🐛 Critical Bug Fixes
+1. **Account Deletion Error** - "not authenticated" error in Profile.jsx → Check Supabase auth state
+2. **Recipe Discovery Endpoint** - `/api/discover-recipes` returns 404 → Endpoint not created or wrong URL
+
+### 📋 Immediate Next Steps
+1. **Apply for Instacart Partner API** - Get access to real pricing/product data (currently only have Public API for cart links)
+2. **Production Instacart Key** - Migrate from sandbox to production after MVP testing
+3. **Affiliate Tracking** - Add UTM parameters for Instacart affiliate commission program
 
 ### Backlog
-- Kroger OAuth user flow for personalized pricing
-- Meal plan to bulk shopping list generation
-- Pantry-aware ingredient filtering
-- Recipe website scraping automation
+- Price update cron job (daily refresh of cached Spoonacular prices)
+- Recipe website scraping automation (Firecrawl + AI normalization)
+- User-generated price database (crowdsourced real prices over time)
+- Advanced meal planning features (budget constraints, leftover optimization)
 
 ---
 

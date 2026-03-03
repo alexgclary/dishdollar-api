@@ -59,6 +59,9 @@ const supabase = SUPABASE_URL && SUPABASE_SERVICE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
   : null;
 
+// Supabase admin client (service role) for privileged operations like account deletion
+const supabaseAdmin = supabase;
+
 // Scraping pipeline configuration
 const GOOGLE_CSE_API_KEY = process.env.GOOGLE_CUSTOM_SEARCH_API_KEY;
 const GOOGLE_CSE_ID = process.env.GOOGLE_SEARCH_ENGINE_ID;
@@ -1529,6 +1532,74 @@ app.post('/api/recipes/discover', async (req, res) => {
   }
 });
 
+// POST /api/discover-recipes - Discover recipes with cuisine/dietary/budget filters
+app.post('/api/discover-recipes', (req, res) => {
+  const { cuisine, dietary, budget, servings = 4 } = req.body;
+
+  const budgetPrices = { low: 8.99, medium: 14.99, high: 24.99 };
+  const basePrice = budgetPrices[budget] || budgetPrices.medium;
+
+  const cuisineLabel = cuisine || 'Classic';
+  const dietLabel = dietary || '';
+
+  const mockRecipes = [
+    {
+      id: 'recipe-1',
+      title: `${cuisineLabel}${dietLabel ? ' ' + dietLabel : ''} Chicken Bowl`,
+      image_url: 'https://via.placeholder.com/400x300?text=Recipe+1',
+      servings: parseInt(servings) || 4,
+      prep_time: 15,
+      cook_time: 25,
+      estimated_price: Math.round((basePrice * 0.9) * 100) / 100,
+      ingredients: [
+        { name: 'chicken breast', amount: 1.5, unit: 'lb' },
+        { name: 'rice', amount: 2, unit: 'cup' },
+        { name: 'olive oil', amount: 2, unit: 'tbsp' },
+        { name: 'garlic', amount: 3, unit: 'clove' },
+        { name: 'lemon', amount: 1, unit: 'whole' }
+      ]
+    },
+    {
+      id: 'recipe-2',
+      title: `${cuisineLabel}${dietLabel ? ' ' + dietLabel : ''} Veggie Stir Fry`,
+      image_url: 'https://via.placeholder.com/400x300?text=Recipe+2',
+      servings: parseInt(servings) || 4,
+      prep_time: 10,
+      cook_time: 20,
+      estimated_price: Math.round((basePrice * 0.75) * 100) / 100,
+      ingredients: [
+        { name: 'broccoli', amount: 2, unit: 'cup' },
+        { name: 'bell pepper', amount: 2, unit: 'whole' },
+        { name: 'soy sauce', amount: 3, unit: 'tbsp' },
+        { name: 'sesame oil', amount: 1, unit: 'tbsp' },
+        { name: 'ginger', amount: 1, unit: 'tsp' }
+      ]
+    },
+    {
+      id: 'recipe-3',
+      title: `${cuisineLabel}${dietLabel ? ' ' + dietLabel : ''} Hearty Soup`,
+      image_url: 'https://via.placeholder.com/400x300?text=Recipe+3',
+      servings: parseInt(servings) || 4,
+      prep_time: 20,
+      cook_time: 40,
+      estimated_price: Math.round((basePrice * 1.1) * 100) / 100,
+      ingredients: [
+        { name: 'vegetable broth', amount: 4, unit: 'cup' },
+        { name: 'onion', amount: 1, unit: 'whole' },
+        { name: 'carrots', amount: 3, unit: 'whole' },
+        { name: 'celery', amount: 2, unit: 'stalk' },
+        { name: 'tomato paste', amount: 2, unit: 'tbsp' }
+      ]
+    }
+  ];
+
+  res.json({
+    success: true,
+    recipes: mockRecipes,
+    filters_applied: { cuisine, dietary, budget, servings }
+  });
+});
+
 // ============================================
 // USER ACCOUNT DELETION
 // ============================================
@@ -1596,6 +1667,90 @@ app.delete('/api/user/delete', async (req, res) => {
 
     // Delete the user from Supabase Auth using admin API
     const { error: deleteUserError } = await supabase.auth.admin.deleteUser(userId);
+
+    if (deleteUserError) {
+      console.error('[Account Deletion] Error deleting auth user:', deleteUserError);
+      return res.status(500).json({
+        error: 'Failed to delete authentication account',
+        details: deleteUserError.message
+      });
+    }
+
+    console.log(`[Account Deletion] Successfully deleted user ${userId}`);
+
+    res.json({
+      success: true,
+      message: 'Account and all associated data have been permanently deleted'
+    });
+
+  } catch (error) {
+    console.error('[Account Deletion] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/users/delete - Account deletion with service role key and body user_id verification
+app.delete('/api/users/delete', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    // Verify JWT and get user identity from token
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+
+    if (authError || !user) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    // Extra security: confirm the caller can only delete their own account
+    const { user_id } = req.body || {};
+    if (user_id && user_id !== user.id) {
+      return res.status(403).json({ error: 'Forbidden: cannot delete another user\'s account' });
+    }
+
+    const userId = user.id;
+    console.log(`[Account Deletion] Starting deletion for user ${userId}`);
+
+    // Tables to delete user data from (in order to handle foreign key constraints)
+    const tablesToDelete = [
+      'shopping_lists',
+      'pantry_items',
+      'meal_plans',
+      'budget_entries',
+      'saved_recipes',
+      'user_extracted_recipes',
+      'recipes',
+      'instacart_recipe_links',
+      'user_profiles'
+    ];
+
+    for (const table of tablesToDelete) {
+      try {
+        const { error } = await supabaseAdmin
+          .from(table)
+          .delete()
+          .eq('user_id', userId);
+
+        if (error) {
+          console.warn(`[Account Deletion] Warning deleting from ${table}:`, error.message);
+        } else {
+          console.log(`[Account Deletion] Deleted user data from ${table}`);
+        }
+      } catch (tableError) {
+        console.warn(`[Account Deletion] Error deleting from ${table}:`, tableError.message);
+      }
+    }
+
+    // Delete the user from Supabase Auth using admin API
+    const { error: deleteUserError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
     if (deleteUserError) {
       console.error('[Account Deletion] Error deleting auth user:', deleteUserError);
