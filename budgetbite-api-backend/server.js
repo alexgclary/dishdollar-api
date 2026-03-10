@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const cheerio = require('cheerio');
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
@@ -8,6 +9,7 @@ const { discoverRecipeUrls } = require('./services/recipeDiscovery');
 const { extractRecipeFromUrl } = require('./services/recipeExtraction');
 const { normalizeRecipe } = require('./services/recipeNormalization');
 const { getIngredientPrices, FALLBACK_PRICES } = require('./services/pricingService');
+const { getPackagePrice, getMultiplePackagePrices } = require('./services/packagePricing');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,8 +29,8 @@ app.use(cors({
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    // Also allow any vercel preview URLs
-    if (origin.includes('.vercel.app')) {
+    // Allow DishDollar Vercel preview deployments only
+    if (origin.match(/^https:\/\/budgetbite-9jq2[a-z0-9-]*\.vercel\.app$/)) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'), false);
@@ -41,10 +43,14 @@ app.use(express.json());
 // Dry run mode for testing (set DRY_RUN=true to log requests instead of calling APIs)
 const DRY_RUN = process.env.DRY_RUN === 'true';
 
-// Kroger API credentials from environment
-const KROGER_CLIENT_ID = process.env.KROGER_CLIENT_ID;
-const KROGER_CLIENT_SECRET = process.env.KROGER_CLIENT_SECRET;
-const KROGER_API_BASE = 'https://api.kroger.com/v1';
+// Rate limiter for pricing endpoints (protects Spoonacular daily quota)
+const pricingRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many pricing requests, please wait a minute and try again.' }
+});
 
 // Instacart API configuration
 const INSTACART_API_KEY = process.env.INSTACART_API_KEY;
@@ -59,227 +65,18 @@ const supabase = SUPABASE_URL && SUPABASE_SERVICE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
   : null;
 
-// Supabase admin client (service role) for privileged operations like account deletion
-const supabaseAdmin = supabase;
-
 // Scraping pipeline configuration
 const GOOGLE_CSE_API_KEY = process.env.GOOGLE_CUSTOM_SEARCH_API_KEY;
 const GOOGLE_CSE_ID = process.env.GOOGLE_SEARCH_ENGINE_ID;
 const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
-// Spoonacular API (ingredient cost estimation for non-Kroger stores)
+// Spoonacular API key
 const SPOONACULAR_API_KEY = process.env.SPOONACULAR_API_KEY;
 
-// Token cache
-let accessToken = null;
-let tokenExpiry = null;
-
-// Kroger store chain URL mappings
-const KROGER_STORE_URLS = {
-  'KROGER': 'https://www.kroger.com',
-  'RALPHS': 'https://www.ralphs.com',
-  'KING SOOPERS': 'https://www.kingsoopers.com',
-  'KINGSOOPERS': 'https://www.kingsoopers.com',
-  'FRY\'S': 'https://www.frysfood.com',
-  'FRYS': 'https://www.frysfood.com',
-  'SMITH\'S': 'https://www.smithsfoodanddrug.com',
-  'SMITHS': 'https://www.smithsfoodanddrug.com',
-  'FRED MEYER': 'https://www.fredmeyer.com',
-  'FREDMEYER': 'https://www.fredmeyer.com',
-  'QFC': 'https://www.qfc.com',
-  'HARRIS TEETER': 'https://www.harristeeter.com',
-  'HARRISTEETER': 'https://www.harristeeter.com',
-  'FOOD 4 LESS': 'https://www.food4less.com',
-  'FOOD4LESS': 'https://www.food4less.com',
-  'PICK N SAVE': 'https://www.picknsave.com',
-  'PICKNSAVE': 'https://www.picknsave.com',
-  'METRO MARKET': 'https://www.metromarket.net',
-  'METROMARKET': 'https://www.metromarket.net',
-  'MARIANOS': 'https://www.marianos.com',
-  'DILLONS': 'https://www.dillons.com',
-  'BAKERS': 'https://www.bakersplus.com',
-  'CITY MARKET': 'https://www.citymarket.com'
-};
-
 // ============================================
-// KROGER API FUNCTIONS
+// HELPER FUNCTIONS
 // ============================================
-
-async function getKrogerToken() {
-  if (accessToken && tokenExpiry && Date.now() < tokenExpiry) {
-    return accessToken;
-  }
-
-  const credentials = Buffer.from(`${KROGER_CLIENT_ID}:${KROGER_CLIENT_SECRET}`).toString('base64');
-  
-  const response = await fetch('https://api.kroger.com/v1/connect/oauth2/token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': `Basic ${credentials}`
-    },
-    body: 'grant_type=client_credentials&scope=product.compact'
-  });
-
-  if (!response.ok) {
-    throw new Error(`Token request failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-  accessToken = data.access_token;
-  tokenExpiry = Date.now() + (data.expires_in - 300) * 1000;
-  
-  return accessToken;
-}
-
-/**
- * Search for a product at Kroger and return best match
- */
-async function searchKrogerProduct(searchTerm, locationId, storeChain = 'KROGER') {
-  try {
-    const token = await getKrogerToken();
-    
-    // Clean up search term for better results
-    const cleanTerm = searchTerm
-      .toLowerCase()
-      .replace(/\(.*?\)/g, '')  // Remove parentheses
-      .replace(/,.*$/, '')       // Remove everything after comma
-      .replace(/fresh|organic|frozen|canned|chopped|diced|minced|sliced|shredded/gi, '')
-      .replace(/boneless|skinless/gi, '')
-      .replace(/for serving/gi, '')
-      .trim()
-      .split(' ')
-      .slice(0, 3)  // Max 3 words for search
-      .join(' ');
-    
-    if (!cleanTerm || cleanTerm.length < 2) {
-      return null;
-    }
-
-    const params = new URLSearchParams({
-      'filter.term': cleanTerm,
-      'filter.locationId': locationId,
-      'filter.limit': '5',
-      'filter.fulfillment': 'ais'
-    });
-
-    const response = await fetch(
-      `${KROGER_API_BASE}/products?${params}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json'
-        }
-      }
-    );
-
-    if (!response.ok) {
-      console.error(`Kroger product search failed for "${cleanTerm}": ${response.status}`);
-      return null;
-    }
-
-    const data = await response.json();
-    const products = data.data || [];
-    
-    if (products.length === 0) {
-      return null;
-    }
-
-    // Get the best match (first result is usually most relevant)
-    const product = products[0];
-    const price = product.items?.[0]?.price?.regular || product.items?.[0]?.price?.promo;
-    const promoPrice = product.items?.[0]?.price?.promo;
-    const upc = product.upc;
-    
-    // Build the product URL for the specific store chain
-    const baseUrl = KROGER_STORE_URLS[storeChain.toUpperCase()] || 'https://www.kroger.com';
-    const productUrl = `${baseUrl}/p/${encodeURIComponent(product.description?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'product')}/${upc}`;
-
-    return {
-      productId: product.productId,
-      upc: upc,
-      name: product.description,
-      brand: product.brand,
-      size: product.items?.[0]?.size || '',
-      price: price,
-      promoPrice: promoPrice,
-      isOnSale: promoPrice && promoPrice < price,
-      productUrl: productUrl,
-      image: product.images?.find(img => img.perspective === 'front')?.sizes?.find(s => s.size === 'medium')?.url
-    };
-  } catch (error) {
-    console.error(`Error searching Kroger for "${searchTerm}":`, error.message);
-    return null;
-  }
-}
-
-// ============================================
-// API ENDPOINTS
-// ============================================
-
-// GET /api/kroger/locations - Find stores by ZIP
-app.get('/api/kroger/locations', async (req, res) => {
-  try {
-    const { zip, radius = 10 } = req.query;
-    
-    if (!zip) {
-      return res.status(400).json({ error: 'ZIP code required' });
-    }
-
-    const token = await getKrogerToken();
-    
-    const response = await fetch(
-      `${KROGER_API_BASE}/locations?filter.zipCode.near=${zip}&filter.radiusInMiles=${radius}&filter.limit=5`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json'
-        }
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Kroger API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    
-    const locations = (data.data || []).map(loc => ({
-      locationId: loc.locationId,
-      name: loc.name,
-      chain: loc.chain,
-      address: {
-        street: loc.address?.addressLine1,
-        city: loc.address?.city,
-        state: loc.address?.state,
-        zip: loc.address?.zipCode
-      }
-    }));
-
-    res.json({ locations });
-  } catch (error) {
-    console.error('Location search error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// GET /api/kroger/products - Search products
-app.get('/api/kroger/products', async (req, res) => {
-  try {
-    const { term, locationId } = req.query;
-
-    if (!term || !locationId) {
-      return res.status(400).json({ error: 'term and locationId required' });
-    }
-
-    const product = await searchKrogerProduct(term, locationId);
-    res.json({ product });
-  } catch (error) {
-    console.error('Product search error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
 
 // ============================================
 // INSTACART API ENDPOINTS
@@ -711,7 +508,7 @@ app.get('/api/instacart/retailers', async (req, res) => {
 });
 
 // ============================================
-// RECIPE PARSING WITH KROGER PRICES
+// RECIPE PARSING
 // ============================================
 
 /**
@@ -966,379 +763,12 @@ app.post('/api/recipe/parse', async (req, res) => {
   }
 });
 
-// POST /api/recipe/parse-with-prices - Parse recipe AND get Kroger prices
-app.post('/api/recipe/parse-with-prices', async (req, res) => {
-  try {
-    const { url, locationId, storeChain = 'KROGER' } = req.body;
-
-    if (!url) {
-      return res.status(400).json({ error: 'URL required' });
-    }
-
-    // Check for cached normalized version
-    if (supabase) {
-      const { data: cached } = await supabase
-        .from('scraped_recipes')
-        .select('*')
-        .eq('source_url', url)
-        .eq('scrape_status', 'normalized')
-        .single();
-
-      if (cached) {
-        console.log(`[Parse+Prices] Cache hit (normalized) for: ${url}`);
-        // Still need to fetch prices for the cached normalized ingredients
-        let ingredientsWithPrices = (cached.ingredients || []).map(ing => ({
-          ...ing,
-          estimated_price: 2.50,
-          krogerProduct: null
-        }));
-        let totalCost = ingredientsWithPrices.length * 2.50;
-        let krogerItemsFound = 0;
-
-        if (locationId) {
-          ingredientsWithPrices = [];
-          totalCost = 0;
-          for (const ing of cached.ingredients || []) {
-            const ingName = typeof ing === 'string' ? ing : ing.name || 'ingredient';
-            const krogerProduct = await searchKrogerProduct(ingName, locationId, storeChain);
-            let estimatedPrice = 2.50;
-            if (krogerProduct) {
-              krogerItemsFound++;
-              estimatedPrice = krogerProduct.price || 2.50;
-              ingredientsWithPrices.push({
-                ...ing,
-                estimated_price: estimatedPrice,
-                krogerProduct: {
-                  name: krogerProduct.name, brand: krogerProduct.brand,
-                  size: krogerProduct.size, price: krogerProduct.price,
-                  promoPrice: krogerProduct.promoPrice, isOnSale: krogerProduct.isOnSale,
-                  url: krogerProduct.productUrl, image: krogerProduct.image
-                }
-              });
-            } else {
-              ingredientsWithPrices.push({ ...ing, estimated_price: estimatedPrice, krogerProduct: null });
-            }
-            totalCost += estimatedPrice;
-            await new Promise(resolve => setTimeout(resolve, 150));
-          }
-        }
-
-        return res.json({
-          success: true,
-          cached: true,
-          normalized: true,
-          recipe: {
-            title: cached.title,
-            description: cached.description,
-            image_url: null,
-            prep_time: cached.prep_time,
-            cook_time: cached.cook_time,
-            total_time: cached.total_time,
-            servings: cached.servings,
-            ingredients: ingredientsWithPrices,
-            instructions: cached.instructions,
-            cuisines: cached.cuisines || [],
-            source_url: url,
-            source_name: cached.source_domain,
-            rewritten: true,
-            total_cost: Math.round(totalCost * 100) / 100,
-            pricing: {
-              source: locationId ? 'kroger' : 'estimate',
-              krogerItemsFound,
-              totalIngredients: (cached.ingredients || []).length,
-              confidence: krogerItemsFound > (cached.ingredients || []).length * 0.5 ? 'high' : 'medium',
-              storeChain
-            }
-          }
-        });
-      }
-    }
-
-    // Fetch and parse the recipe
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch URL: ${response.status}`);
-    }
-
-    const html = await response.text();
-    const $ = cheerio.load(html);
-
-    // Find recipe data
-    let recipe = null;
-    
-    $('script[type="application/ld+json"]').each((i, el) => {
-      try {
-        const data = JSON.parse($(el).html());
-        
-        if (data['@graph']) {
-          const found = data['@graph'].find(item => item['@type'] === 'Recipe');
-          if (found) recipe = found;
-        } else if (Array.isArray(data)) {
-          const found = data.find(item => item['@type'] === 'Recipe');
-          if (found) recipe = found;
-        } else if (data['@type'] === 'Recipe') {
-          recipe = data;
-        }
-      } catch (e) {
-        // Continue
-      }
-    });
-
-    if (!recipe) {
-      return res.json({ success: false, message: 'No recipe data found' });
-    }
-
-    // Parse ingredients
-    const rawIngredients = recipe.recipeIngredient || [];
-    const parsedIngredients = rawIngredients.map(ing => parseIngredientString(ing));
-
-    // If locationId provided, search Kroger for each ingredient
-    let ingredientsWithPrices = parsedIngredients;
-    let totalCost = 0;
-    let krogerItemsFound = 0;
-
-    if (locationId) {
-      console.log(`Searching Kroger location ${locationId} for ${parsedIngredients.length} ingredients...`);
-      
-      ingredientsWithPrices = [];
-      
-      for (const ing of parsedIngredients) {
-        // Search Kroger for this ingredient
-        const krogerProduct = await searchKrogerProduct(ing.name, locationId, storeChain);
-        
-        let estimatedPrice = 2.50; // Default fallback
-        
-        if (krogerProduct) {
-          krogerItemsFound++;
-          estimatedPrice = krogerProduct.price || 2.50;
-          
-          ingredientsWithPrices.push({
-            ...ing,
-            estimated_price: estimatedPrice,
-            krogerProduct: {
-              name: krogerProduct.name,
-              brand: krogerProduct.brand,
-              size: krogerProduct.size,
-              price: krogerProduct.price,
-              promoPrice: krogerProduct.promoPrice,
-              isOnSale: krogerProduct.isOnSale,
-              url: krogerProduct.productUrl,
-              image: krogerProduct.image
-            }
-          });
-        } else {
-          // No Kroger product found - use fallback price
-          ingredientsWithPrices.push({
-            ...ing,
-            estimated_price: estimatedPrice,
-            krogerProduct: null
-          });
-        }
-        
-        totalCost += estimatedPrice;
-        
-        // Small delay to respect rate limits
-        await new Promise(resolve => setTimeout(resolve, 150));
-      }
-    } else {
-      // No location - just return parsed ingredients without prices
-      ingredientsWithPrices = parsedIngredients.map(ing => ({
-        ...ing,
-        estimated_price: 2.50,
-        krogerProduct: null
-      }));
-      totalCost = parsedIngredients.length * 2.50;
-    }
-
-    // Separate "for serving" items
-    const mainIngredients = ingredientsWithPrices.filter(ing => !ing.forServing);
-    const servingIngredients = ingredientsWithPrices.filter(ing => ing.forServing);
-
-    const parsedRecipe = {
-      title: recipe.name || 'Untitled Recipe',
-      description: recipe.description || '',
-      image_url: extractImage(recipe.image),
-      prep_time: parseISO8601Duration(recipe.prepTime),
-      cook_time: parseISO8601Duration(recipe.cookTime),
-      total_time: parseISO8601Duration(recipe.totalTime),
-      servings: parseServings(recipe.recipeYield),
-      ingredients: mainIngredients,
-      servingIngredients: servingIngredients,
-      instructions: parseInstructions(recipe.recipeInstructions),
-      cuisines: recipe.recipeCuisine ? [].concat(recipe.recipeCuisine) : [],
-      source_url: url,
-      source_name: new URL(url).hostname.replace('www.', ''),
-      author: recipe.author?.name || recipe.author || null,
-      total_cost: Math.round(totalCost * 100) / 100,
-      pricing: {
-        source: locationId ? 'kroger' : 'estimate',
-        krogerItemsFound,
-        totalIngredients: parsedIngredients.length,
-        confidence: krogerItemsFound > parsedIngredients.length * 0.5 ? 'high' : 'medium',
-        storeChain
-      }
-    };
-
-    res.json({ success: true, normalized: false, recipe: parsedRecipe });
-  } catch (error) {
-    console.error('Recipe parsing error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // ============================================
-// PRICE ESTIMATION (Fallback without Kroger)
-// ============================================
-
-const GROCERY_PRICES = {
-  "chicken": 3.99, "beef": 5.99, "pork": 3.99, "salmon": 9.99, "shrimp": 8.99,
-  "egg": 0.30, "milk": 3.99, "butter": 4.99, "cheese": 4.99, "cream": 3.99,
-  "onion": 0.75, "garlic": 0.50, "tomato": 0.50, "potato": 0.40, "carrot": 0.25,
-  "pepper": 1.29, "broccoli": 1.99, "spinach": 2.99, "lettuce": 1.99,
-  "rice": 2.49, "pasta": 1.49, "flour": 2.99, "bread": 2.99, "tortilla": 2.99,
-  "oil": 0.50, "vinegar": 0.25, "soy sauce": 0.25, "honey": 0.50,
-  "salt": 0.05, "pepper": 0.05, "cumin": 0.10, "paprika": 0.10,
-  "broth": 2.49, "beans": 1.19, "tomato sauce": 0.99, "coconut milk": 2.49
-};
-
-app.post('/api/prices/estimate', (req, res) => {
-  try {
-    const { ingredients } = req.body;
-    
-    if (!ingredients || !Array.isArray(ingredients)) {
-      return res.status(400).json({ error: 'ingredients array required' });
-    }
-
-    const breakdown = ingredients.map(ing => {
-      const name = (ing.name || '').toLowerCase();
-      let price = 2.50;
-      
-      for (const [key, val] of Object.entries(GROCERY_PRICES)) {
-        if (name.includes(key)) {
-          price = val;
-          break;
-        }
-      }
-      
-      return {
-        ingredient: ing.name,
-        amount: ing.amount || 1,
-        unit: ing.unit || '',
-        estimatedPrice: price,
-        source: 'estimate'
-      };
-    });
-
-    const totalCost = breakdown.reduce((sum, item) => sum + item.estimatedPrice, 0);
-
-    res.json({
-      totalCost: Math.round(totalCost * 100) / 100,
-      breakdown,
-      confidence: 'low'
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ============================================
-// PRICE SEARCH (Multiple Ingredients)
-// ============================================
-
-// POST /api/prices/search - Search Kroger prices for multiple ingredients
-app.post('/api/prices/search', async (req, res) => {
-  try {
-    const { ingredients, zipCode, storeChain = 'KROGER' } = req.body;
-
-    if (!ingredients || !Array.isArray(ingredients)) {
-      return res.status(400).json({ error: 'ingredients array required' });
-    }
-
-    // Find nearest Kroger location if zipCode provided
-    let locationId = null;
-    if (zipCode) {
-      const token = await getKrogerToken();
-      const locResponse = await fetch(
-        `${KROGER_API_BASE}/locations?filter.zipCode.near=${zipCode}&filter.radiusInMiles=10&filter.limit=1`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json'
-          }
-        }
-      );
-
-      if (locResponse.ok) {
-        const locData = await locResponse.json();
-        locationId = locData.data?.[0]?.locationId;
-      }
-    }
-
-    if (!locationId) {
-      // No location found - return estimated prices
-      const items = ingredients.map(ing => ({
-        ingredient: ing.name,
-        price: GROCERY_PRICES[ing.name?.toLowerCase()] || 2.50,
-        source: 'estimated'
-      }));
-
-      return res.json({
-        success: true,
-        items,
-        totalCost: items.reduce((sum, i) => sum + i.price, 0),
-        source: 'estimated'
-      });
-    }
-
-    // Search Kroger for each ingredient
-    const items = [];
-    let totalCost = 0;
-
-    for (const ing of ingredients) {
-      const product = await searchKrogerProduct(ing.name, locationId, storeChain);
-
-      const price = product?.price || GROCERY_PRICES[ing.name?.toLowerCase()] || 2.50;
-      totalCost += price;
-
-      items.push({
-        ingredient: ing.name,
-        price,
-        productName: product?.name || null,
-        brand: product?.brand || null,
-        size: product?.size || null,
-        productUrl: product?.productUrl || null,
-        image: product?.image || null,
-        source: product ? 'kroger' : 'estimated'
-      });
-
-      // Rate limiting
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    res.json({
-      success: true,
-      items,
-      totalCost: Math.round(totalCost * 100) / 100,
-      source: 'kroger',
-      locationId
-    });
-  } catch (error) {
-    console.error('Price search error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// ============================================
-// UNIFIED LIVE PRICING (Kroger + Spoonacular + Fallback)
+// UNIFIED LIVE PRICING (Spoonacular + Fallback)
 // ============================================
 
 // POST /api/prices/live - Get ingredient prices using tiered strategy
-app.post('/api/prices/live', async (req, res) => {
+app.post('/api/prices/live', pricingRateLimiter, async (req, res) => {
   try {
     const { ingredients, zipCode, storeName, storeChain, forceRefresh = false } = req.body;
 
@@ -1374,10 +804,7 @@ app.post('/api/prices/live', async (req, res) => {
 
     const deps = {
       supabase,
-      searchKrogerProduct,
-      getKrogerToken,
-      spoonacularApiKey: SPOONACULAR_API_KEY,
-      krogerApiBase: KROGER_API_BASE
+      spoonacularApiKey: SPOONACULAR_API_KEY
     };
 
     const result = await getIngredientPrices(deps, ingredients, {
@@ -1533,161 +960,58 @@ app.post('/api/recipes/discover', async (req, res) => {
 });
 
 // POST /api/discover-recipes - Discover recipes with cuisine/dietary/budget filters
-app.post('/api/discover-recipes', (req, res) => {
-  const { cuisine, dietary, budget, servings = 4 } = req.body;
+app.post('/api/discover-recipes', async (req, res) => {
+  try {
+    const { cuisine, dietary, budget, servings = 4 } = req.body;
 
-  const budgetPrices = { low: 8.99, medium: 14.99, high: 24.99 };
-  const basePrice = budgetPrices[budget] || budgetPrices.medium;
+    // Map cuisine/dietary params to DISCOVERY_RECIPES category keys
+    let selectedCategory = 'budget';
+    const dietaryLower = (dietary || '').toLowerCase();
+    const cuisineLower = (cuisine || '').toLowerCase();
 
-  const cuisineLabel = cuisine || 'Classic';
-  const dietLabel = dietary || '';
-
-  const mockRecipes = [
-    {
-      id: 'recipe-1',
-      title: `${cuisineLabel}${dietLabel ? ' ' + dietLabel : ''} Chicken Bowl`,
-      image_url: 'https://via.placeholder.com/400x300?text=Recipe+1',
-      servings: parseInt(servings) || 4,
-      prep_time: 15,
-      cook_time: 25,
-      estimated_price: Math.round((basePrice * 0.9) * 100) / 100,
-      ingredients: [
-        { name: 'chicken breast', amount: 1.5, unit: 'lb' },
-        { name: 'rice', amount: 2, unit: 'cup' },
-        { name: 'olive oil', amount: 2, unit: 'tbsp' },
-        { name: 'garlic', amount: 3, unit: 'clove' },
-        { name: 'lemon', amount: 1, unit: 'whole' }
-      ]
-    },
-    {
-      id: 'recipe-2',
-      title: `${cuisineLabel}${dietLabel ? ' ' + dietLabel : ''} Veggie Stir Fry`,
-      image_url: 'https://via.placeholder.com/400x300?text=Recipe+2',
-      servings: parseInt(servings) || 4,
-      prep_time: 10,
-      cook_time: 20,
-      estimated_price: Math.round((basePrice * 0.75) * 100) / 100,
-      ingredients: [
-        { name: 'broccoli', amount: 2, unit: 'cup' },
-        { name: 'bell pepper', amount: 2, unit: 'whole' },
-        { name: 'soy sauce', amount: 3, unit: 'tbsp' },
-        { name: 'sesame oil', amount: 1, unit: 'tbsp' },
-        { name: 'ginger', amount: 1, unit: 'tsp' }
-      ]
-    },
-    {
-      id: 'recipe-3',
-      title: `${cuisineLabel}${dietLabel ? ' ' + dietLabel : ''} Hearty Soup`,
-      image_url: 'https://via.placeholder.com/400x300?text=Recipe+3',
-      servings: parseInt(servings) || 4,
-      prep_time: 20,
-      cook_time: 40,
-      estimated_price: Math.round((basePrice * 1.1) * 100) / 100,
-      ingredients: [
-        { name: 'vegetable broth', amount: 4, unit: 'cup' },
-        { name: 'onion', amount: 1, unit: 'whole' },
-        { name: 'carrots', amount: 3, unit: 'whole' },
-        { name: 'celery', amount: 2, unit: 'stalk' },
-        { name: 'tomato paste', amount: 2, unit: 'tbsp' }
-      ]
+    if (dietaryLower.includes('vegan') || dietaryLower.includes('vegetarian')) {
+      selectedCategory = 'vegan';
+    } else if (dietaryLower.includes('keto') || dietaryLower.includes('paleo') || dietaryLower.includes('whole30')) {
+      selectedCategory = 'healthy';
+    } else if (cuisineLower.includes('italian') || cuisineLower.includes('comfort') || cuisineLower.includes('american')) {
+      selectedCategory = 'comfort';
+    } else if (cuisineLower.includes('asian') || cuisineLower.includes('thai') || cuisineLower.includes('chinese') || cuisineLower.includes('japanese')) {
+      selectedCategory = 'quick';
+    } else if (cuisineLower.includes('mexican') || cuisineLower.includes('latin')) {
+      selectedCategory = 'budget';
+    } else if (budget === 'low') {
+      selectedCategory = 'budget';
     }
-  ];
 
-  res.json({
-    success: true,
-    recipes: mockRecipes,
-    filters_applied: { cuisine, dietary, budget, servings }
-  });
+    const categoryUrls = DISCOVERY_RECIPES[selectedCategory] || DISCOVERY_RECIPES.budget;
+    const urlsToFetch = categoryUrls.slice(0, 3);
+
+    const recipes = [];
+    for (const url of urlsToFetch) {
+      try {
+        const extracted = await extractRecipeFromUrl(url);
+        if (extracted && extracted.title) {
+          recipes.push(extracted);
+        }
+      } catch (urlError) {
+        console.warn(`[discover-recipes] Failed to extract ${url}:`, urlError.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      recipes,
+      filters_applied: { cuisine, dietary, budget, servings }
+    });
+  } catch (error) {
+    console.error('discover-recipes error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // ============================================
 // USER ACCOUNT DELETION
 // ============================================
-
-/**
- * DELETE /api/user/delete
- * Permanently deletes a user account and all associated data
- * Requires: Authorization header with Bearer token
- */
-app.delete('/api/user/delete', async (req, res) => {
-  try {
-    // Get the authorization header
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Authorization required' });
-    }
-
-    const token = authHeader.split(' ')[1];
-
-    if (!supabase) {
-      return res.status(500).json({ error: 'Database not configured' });
-    }
-
-    // Verify the token and get user info
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      return res.status(401).json({ error: 'Invalid or expired token' });
-    }
-
-    const userId = user.id;
-    console.log(`[Account Deletion] Starting deletion for user ${userId}`);
-
-    // Tables to delete user data from (in order to handle foreign key constraints)
-    const tablesToDelete = [
-      'shopping_lists',
-      'pantry_items',
-      'meal_plans',
-      'budget_entries',
-      'saved_recipes',
-      'user_extracted_recipes',
-      'recipes',
-      'instacart_recipe_links',
-      'user_profiles'
-    ];
-
-    // Delete data from each table
-    for (const table of tablesToDelete) {
-      try {
-        const { error } = await supabase
-          .from(table)
-          .delete()
-          .eq('user_id', userId);
-
-        if (error) {
-          console.warn(`[Account Deletion] Warning deleting from ${table}:`, error.message);
-          // Continue with other tables even if one fails
-        } else {
-          console.log(`[Account Deletion] Deleted user data from ${table}`);
-        }
-      } catch (tableError) {
-        console.warn(`[Account Deletion] Error deleting from ${table}:`, tableError.message);
-      }
-    }
-
-    // Delete the user from Supabase Auth using admin API
-    const { error: deleteUserError } = await supabase.auth.admin.deleteUser(userId);
-
-    if (deleteUserError) {
-      console.error('[Account Deletion] Error deleting auth user:', deleteUserError);
-      return res.status(500).json({
-        error: 'Failed to delete authentication account',
-        details: deleteUserError.message
-      });
-    }
-
-    console.log(`[Account Deletion] Successfully deleted user ${userId}`);
-
-    res.json({
-      success: true,
-      message: 'Account and all associated data have been permanently deleted'
-    });
-
-  } catch (error) {
-    console.error('[Account Deletion] Error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
 
 // DELETE /api/users/delete - Account deletion with service role key and body user_id verification
 app.delete('/api/users/delete', async (req, res) => {
@@ -1699,12 +1023,12 @@ app.delete('/api/users/delete', async (req, res) => {
 
     const token = authHeader.split(' ')[1];
 
-    if (!supabaseAdmin) {
+    if (!supabase) {
       return res.status(500).json({ error: 'Database not configured' });
     }
 
     // Verify JWT and get user identity from token
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !user) {
       return res.status(401).json({ error: 'Invalid or expired token' });
@@ -1734,7 +1058,7 @@ app.delete('/api/users/delete', async (req, res) => {
 
     for (const table of tablesToDelete) {
       try {
-        const { error } = await supabaseAdmin
+        const { error } = await supabase
           .from(table)
           .delete()
           .eq('user_id', userId);
@@ -1750,7 +1074,7 @@ app.delete('/api/users/delete', async (req, res) => {
     }
 
     // Delete the user from Supabase Auth using admin API
-    const { error: deleteUserError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    const { error: deleteUserError } = await supabase.auth.admin.deleteUser(userId);
 
     if (deleteUserError) {
       console.error('[Account Deletion] Error deleting auth user:', deleteUserError);
@@ -2212,6 +1536,36 @@ app.delete('/api/extracted-recipes/:recipeId', async (req, res) => {
   }
 });
 
+// POST /api/prices/package-lookup - Get package-based price for a single ingredient
+app.post('/api/prices/package-lookup', pricingRateLimiter, async (req, res) => {
+  try {
+    const { ingredientName } = req.body;
+    if (!ingredientName) {
+      return res.status(400).json({ success: false, error: 'ingredientName is required' });
+    }
+    const data = await getPackagePrice(ingredientName);
+    res.json({ success: true, package: data });
+  } catch (error) {
+    console.error('[package-lookup] Error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/prices/bulk-lookup - Get package-based prices for multiple ingredients
+app.post('/api/prices/bulk-lookup', pricingRateLimiter, async (req, res) => {
+  try {
+    const { ingredients } = req.body;
+    if (!Array.isArray(ingredients) || ingredients.length === 0) {
+      return res.status(400).json({ success: false, error: 'ingredients must be a non-empty array' });
+    }
+    const packages = await getMultiplePackagePrices(ingredients);
+    res.json({ success: true, packages, count: packages.length });
+  } catch (error) {
+    console.error('[bulk-lookup] Error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({
@@ -2221,12 +1575,10 @@ app.get('/api/health', (req, res) => {
     dry_run: DRY_RUN,
     features: [
       'recipe-parsing',
-      'kroger-pricing',
       'spoonacular-pricing',
       'unified-pricing',
       'product-search',
       'recipe-discovery',
-      'price-search',
       'instacart-recipe',
       'instacart-shopping-list',
       'instacart-retailers',
@@ -2237,9 +1589,6 @@ app.get('/api/health', (req, res) => {
     instacart: {
       configured: !!INSTACART_API_KEY,
       api_url: INSTACART_API_URL
-    },
-    kroger: {
-      configured: !!(KROGER_CLIENT_ID && KROGER_CLIENT_SECRET)
     },
     spoonacular: {
       configured: !!SPOONACULAR_API_KEY
@@ -2258,7 +1607,7 @@ app.get('/api/health', (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`DishDollar API v4.0.0 running on port ${PORT}`);
+  console.log(`DishDollar API v5.0.0 running on port ${PORT}`);
   console.log(`Instacart API: ${INSTACART_API_URL}`);
   console.log(`Dry run mode: ${DRY_RUN ? 'ENABLED' : 'disabled'}`);
   console.log(`Supabase caching: ${supabase ? 'enabled' : 'disabled'}`);

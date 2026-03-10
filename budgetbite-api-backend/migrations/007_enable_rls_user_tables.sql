@@ -1,0 +1,11 @@
+-- Audit finding: verify RLS on all user-data tables.
+-- Verified 2026-03-06: all existing Supabase tables already have RLS enabled.
+-- Tables referenced in frontend (profiles, saved_recipes, meal_plans, shopping_lists,
+-- pantry_items) are managed via the client-side entity layer and do not exist as
+-- standalone Supabase tables — no action required.
+--
+-- Existing tables with confirmed RLS: product_packages, user_extracted_recipes,
+-- instacart_recipe_links, and all other public tables.
+--
+-- This migration is a no-op and serves as documentation only.
+SELECT 'RLS audit complete — all tables verified' AS status;

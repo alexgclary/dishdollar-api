@@ -1,6 +1,6 @@
 const Anthropic = require('@anthropic-ai/sdk');
 
-const NORMALIZATION_MODEL = 'claude-sonnet-4-5-20250929';
+const NORMALIZATION_MODEL = 'claude-sonnet-4-6';
 const MAX_TOKENS = 4096;
 
 let anthropicClient = null;
